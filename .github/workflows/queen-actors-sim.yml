@@ -140,7 +140,7 @@ jobs:
             if [ -s "$REPORT" ]; then
               jq -r '.broken[0] // empty | "First broken invariant: **\(.name)** (invariant \(.invariant)), seed \(.seed), \(.world) world, features \(.features), step \(.step).\n\n\(.text)\n\nReplay from `trios/agent-server/apps/server`:\n\n```\n\(.replay)\n```"' "$REPORT"
               echo
-              jq -r '"All failures (\(.broken | length)) of \(.cases) cases, \(.totalMs) ms:\n\n" + ([.broken[] | "- invariant \(.invariant) \(.name): seed \(.seed) (\(.world), features \(.features)), step \(.step)"] | join("\n"))' "$REPORT"
+              jq -r '"All failures (\(.broken | length)) of \(.cases) cases, \(.totalMs) ms:\n\n" + ([.broken[] | if .step < 0 then "- invariant \(.invariant) \(.name): \(.text)" else "- invariant \(.invariant) \(.name): seed \(.seed) (\(.world), features \(.features)), step \(.step)" end] | join("\n"))' "$REPORT"
             else
               echo "The gate wrote no report: it failed before its cases ran. See the run's log."
             fi
