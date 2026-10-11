@@ -801,6 +801,20 @@ export const CEILING_RELEASE_MS = CEILING_FLOOR_MINUTES * 60 * 1000
  */
 export const MAX_CEILING_RELEASES = MAX_RELEASES
 
+/**
+ * holds.t27 send_back_claim behind TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (t27#9111):
+ * whether a send-back's issue is free at once. `flag` is the caller's reading
+ * of the flag, the environment's when it passes none.
+ */
+function nobodyComesBack(
+  flag: boolean | undefined,
+  sendBacks: number,
+  ceiling: number,
+): boolean {
+  if (!(flag ?? releaseDeadClaimsEnabled())) return false
+  return sendBackClaim(sendBacks, ceiling) === CL_FREE
+}
+
 export function stateOfDispatch(
   finished: boolean,
   reviewState: unknown,
@@ -892,10 +906,7 @@ export function stateOfDispatch(
     // one. Measured 2026-10-11 12:55Z: 8 of 89 claims were send-backs under
     // the ceiling. Under the ceiling the card frees the issue at once; at the
     // ceiling it falls through to the review valve, as before.
-    if (
-      (lease.releaseDeadClaims ?? releaseDeadClaimsEnabled()) &&
-      sendBackClaim(sendBacks, ceiling) === CL_FREE
-    )
+    if (nobodyComesBack(lease.releaseDeadClaims, sendBacks, ceiling))
       return 'failed'
     if (idleMs >= SEND_BACK_IDLE_FLOOR_MS && sendBacks < ceiling)
       return 'failed'
