@@ -43,6 +43,10 @@ import {
   type RunShard,
 } from '../../src/api/services/hosting-agent'
 import {
+  createHostingFeed,
+  type FeedSource,
+} from '../../src/api/services/hosting-feed'
+import {
   createHostingQueen,
   type HostingEconomics,
   type HostingQueen,
@@ -56,6 +60,11 @@ import {
   keyIdOf,
   normalizeShard,
 } from '../../src/api/services/hosting-wire'
+import {
+  FEED_DEBOUNCE_SECONDS,
+  REFERENCE_SOURCES,
+  T27B_SOURCES,
+} from '../../src/api/services/queen-hosting-feed-card.gen'
 import {
   ISO_JOBDIR,
   NODE_TTL_SECONDS,
@@ -88,6 +97,9 @@ const INPUT = createHash('sha256').update('module DemoShard;\n').digest('hex')
 const MODEL = createHash('sha256').update('t27c as built').digest('hex')
 
 const HOSTING_TABLES = [
+  // slice 2a (gHashTag/trios#1867): the feed's receipts and their parts
+  'hosting_feed_parts',
+  'hosting_feeds',
   'hosting_hosts',
   'hosting_jobs',
   'hosting_leases',
@@ -607,6 +619,131 @@ describe.skipIf(!adminUrl)('the hosting store on a live PostgreSQL', () => {
           })
           expect(x.epochs[0]?.signature).toBe(answers[0]?.epochs[0]?.signature)
         }
+      } finally {
+        await w.end()
+      }
+    } finally {
+      await fresh.drop()
+    }
+  })
+  it('the feed over the live store: two Queens feed one head once, and its receipt reads back from the parts', async () => {
+    const fresh = await scratchDatabase()
+    try {
+      await withSchema(fresh.url)
+      const w = await twoQueens(fresh.url, { sybil: false })
+      try {
+        // t27 at P0 (the pin) and H1, where specs/a/base.t27 changed: base
+        // and mid (which imports it) are sharded, single is carried
+        const P0 = '1'.repeat(40)
+        const H1 = '2'.repeat(40)
+        const files = (base: string): Record<string, string> => ({
+          'specs/a/base.t27': base,
+          'specs/a/mid.t27': 'use a::base;\n',
+          'specs/b/single.t27': 'module B;\n',
+        })
+        const toolchain = Object.fromEntries(
+          [...new Set([...REFERENCE_SOURCES, ...T27B_SOURCES])].map((p) => [
+            p,
+            createHash('sha1').update(p).digest('hex'),
+          ]),
+        )
+        const trees: Record<string, Record<string, string>> = {}
+        const blobs = new Map<string, string>()
+        for (const [sha, base] of [
+          [P0, 'module A;\n'],
+          [H1, 'module A;\nconst X = 1;\n'],
+        ] as const) {
+          const tree: Record<string, string> = { ...toolchain }
+          for (const [p, text] of Object.entries(files(base))) {
+            const id = createHash('sha1').update(text).digest('hex')
+            blobs.set(id, text)
+            tree[p] = id
+          }
+          // two of t27b's sources are specs: give them bytes
+          for (const p of T27B_SOURCES.filter((x) => x.startsWith('specs/'))) {
+            blobs.set(toolchain[p] as string, `module ${p.length};\n`)
+          }
+          trees[sha] = tree
+        }
+        const row = (file: string) => ({
+          file,
+          reference: 'pass',
+          reference_detail: '',
+          t27b: 'pass',
+          tests: 1,
+          invariants: 0,
+          asserts: 1,
+          blockers: [],
+          detail: '',
+          test_verdicts: { t: true },
+          reference_tests: { t: true },
+          reference_disagree: [],
+          retried_after_timeout: true,
+        })
+        const source: FeedSource = {
+          head: async () => ({ sha: H1, etag: null }),
+          tree: async (c) =>
+            trees[c] ? new Map(Object.entries(trees[c])) : null,
+          file: async (c, p) =>
+            new TextEncoder().encode(blobs.get(trees[c]?.[p] as string) ?? ''),
+          labRun: async (c) =>
+            c === P0
+              ? {
+                  results: Object.keys(trees[P0] as object)
+                    .filter((p) => p.startsWith('specs/'))
+                    .map(row),
+                }
+              : null,
+          labUrl: (c) => `https://lab.test/runs/${c}.json`,
+        }
+        const feeds = w.pools.map((pool, i) =>
+          createHostingFeed({
+            store: createPgHostingStore(pool),
+            queen: w.queens[i] as HostingQueen,
+            source,
+            now: w.clock.now,
+            pin: P0,
+          }),
+        )
+        await Promise.all(feeds.map((f) => f.tick()))
+        await w.clock.runUntil(w.clock.now() + FEED_DEBOUNCE_SECONDS * 1000)
+        await Promise.all(feeds.map((f) => f.tick()))
+        const rows = await sql(
+          fresh.url,
+          `SELECT id, (body->>'seq')::int AS seq FROM ${queenSchema()}.hosting_feeds ORDER BY id`,
+        )
+        expect(rows).toEqual([
+          { id: H1, seq: 1 },
+          { id: `lab:${P0}`, seq: 0 },
+        ])
+        // 2 specs x 2 halves sharded, once, whichever Queen claimed the head
+        const jobs = await sql(
+          fresh.url,
+          `SELECT count(*)::int AS n FROM ${queenSchema()}.hosting_jobs`,
+        )
+        expect(jobs[0]?.n).toBe(4)
+        // the lab's 5 rows share two distinct parts (one per half), stored once
+        const parts = await sql(
+          fresh.url,
+          `SELECT count(*)::int AS n FROM ${queenSchema()}.hosting_feed_parts`,
+        )
+        expect(parts[0]?.n).toBe(2)
+        const status = await feeds[1]?.status()
+        expect(status?.feeds.map((f) => [f.id, f.state, f.specs])).toEqual([
+          [H1, 'open', 5],
+          [`lab:${P0}`, 'complete', 5],
+        ])
+        const receipt = await feeds[0]?.receipt(H1)
+        const single = receipt?.rows.find(
+          (r) => r.file === 'specs/b/single.t27',
+        )
+        expect(single).toMatchObject({ reference: 'pass', t27b: 'pass' })
+        // the lab's load key is never carried
+        expect(single).not.toHaveProperty('retried_after_timeout')
+        expect(receipt?.unsettled.map((u) => u.file).sort()).toEqual([
+          'specs/a/base.t27',
+          'specs/a/mid.t27',
+        ])
       } finally {
         await w.end()
       }
