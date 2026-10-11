@@ -999,14 +999,8 @@ export function createHostingQueen(deps: HostingQueenDeps) {
 
   // --- jobs, owner only -------------------------------------------------------
 
-  async function createJob(req: HostRequest) {
-    const b = (() => {
-      try {
-        return JSON.parse(req.body || '{}') as Record<string, unknown>
-      } catch {
-        throw new HostingError('bad_job', 400)
-      }
-    })()
+  /** A shard job from its request body, checked; the row it would be. */
+  function shardRowOf(b: Record<string, unknown>): JobRow {
     const commit = text(b.commit, HEX40)
     const spec = specPath(b.spec)
     const inputHash = text(b.input_hash, HEX64)
@@ -1064,41 +1058,68 @@ export function createHostingQueen(deps: HostingQueenDeps) {
         half,
       ]),
     ).slice(0, 16)}`
+    return {
+      id,
+      kind: 'shard',
+      half,
+      commit,
+      spec,
+      inputHash,
+      files: sorted,
+      modelHash,
+      workloadClass: WC_SHARD,
+      holdsSecret: b.holds_secret as boolean,
+      holdsPersonal: b.holds_personal as boolean,
+      wanted: econ.sybil ? replicasWanted(knownHash !== null) : REPLICAS_K,
+      leasesIssued: 0,
+      knownHash,
+      state: 'open',
+      verdict: JV_PENDING,
+      createdAt: nowMs(),
+      closedAt: null,
+      result: null,
+    }
+  }
+
+  /** Store a new shard, or answer the one with the same id. */
+  async function putShard(s: HostingTx, row: JobRow) {
+    const existing = await s.job(row.id)
+    if (existing) {
+      if (row.knownHash && !existing.knownHash && existing.state === 'open') {
+        existing.knownHash = row.knownHash
+        await s.putJob(existing)
+      }
+      return { job: jobPayload(existing), created: false }
+    }
+    await s.putJob(row)
+    return { job: jobPayload(row), created: true }
+  }
+
+  async function createJob(req: HostRequest) {
+    const b = (() => {
+      try {
+        return JSON.parse(req.body || '{}') as Record<string, unknown>
+      } catch {
+        throw new HostingError('bad_job', 400)
+      }
+    })()
+    const row = shardRowOf(b)
     return deps.store.tx(async (s) => {
       const owner = await admit(s, req)
       if (owner.tier !== TIER_OWNER) throw new HostingError('owner_only', 403)
-      const existing = await s.job(id)
-      if (existing) {
-        if (knownHash && !existing.knownHash && existing.state === 'open') {
-          existing.knownHash = knownHash
-          await s.putJob(existing)
-        }
-        return { job: jobPayload(existing), created: false }
-      }
-      const row: JobRow = {
-        id,
-        kind: 'shard',
-        half,
-        commit,
-        spec,
-        inputHash,
-        files: sorted,
-        modelHash,
-        workloadClass: WC_SHARD,
-        holdsSecret: b.holds_secret as boolean,
-        holdsPersonal: b.holds_personal as boolean,
-        wanted: econ.sybil ? replicasWanted(knownHash !== null) : REPLICAS_K,
-        leasesIssued: 0,
-        knownHash,
-        state: 'open',
-        verdict: JV_PENDING,
-        createdAt: nowMs(),
-        closedAt: null,
-        result: null,
-      }
-      await s.putJob(row)
-      return { job: jobPayload(row), created: true }
+      return putShard(s, row)
     })
+  }
+
+  /**
+   * THE QUEEN'S OWN OWNER PATH (feed.t27, gHashTag/trios#1756 slice 2a): the
+   * feed submits its shards in process, as the owner, with no host key and no
+   * HTTP. The body is checked exactly as a signed POST /hosting/jobs is; only
+   * the signature and the tier check are not asked of the Queen itself.
+   */
+  async function submitShard(body: Record<string, unknown>) {
+    const row = shardRowOf(body)
+    return deps.store.tx((s) => putShard(s, row))
   }
 
   // --- reads ------------------------------------------------------------------
@@ -1240,6 +1261,7 @@ export function createHostingQueen(deps: HostingQueenDeps) {
     lease,
     receipt,
     createJob,
+    submitShard,
     ledger,
     verdicts,
     job,
