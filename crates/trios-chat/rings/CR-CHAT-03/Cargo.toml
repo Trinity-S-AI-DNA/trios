@@ -14,3 +14,9 @@ publish = false
 trios-chat-cr-chat-00 = { path = "../CR-CHAT-00" }
 serde             = { workspace = true }
 thiserror         = { workspace = true }
+
+# src/t27gen/ holds t27c gen-rust output, which marks its derives with
+# #[cfg_attr(feature = "serde", ...)]. This ring has no serde feature; declaring
+# the value keeps that cfg from warning (the derive stays off).
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("serde"))'] }
