@@ -223,6 +223,8 @@ if [ -z "${TRIOS_INCLUDE_PROTOTYPES:-}" ]; then
         "GitHubModels.swift"
         "GitWorkspaceView.swift"
         "GlassmorphismBackground.swift"
+        "HostingAgentProcess.swift"
+        "HostingPanelModel.swift"
         "HostingPanelView.swift"
         "HotkeyBar.swift"
         "LLMClient.swift"

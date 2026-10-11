@@ -66,6 +66,8 @@ let package = Package(
                 "BR-OUTPUT/GitHubModels.swift",
                 "BR-OUTPUT/GitWorkspaceView.swift",
                 "BR-OUTPUT/GlassmorphismBackground.swift",
+                "BR-OUTPUT/HostingAgentProcess.swift",
+                "BR-OUTPUT/HostingPanelModel.swift",
                 "BR-OUTPUT/HostingPanelView.swift",
                 "BR-OUTPUT/HotkeyBar.swift",
                 "BR-OUTPUT/LLMClient.swift",

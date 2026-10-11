@@ -856,8 +856,8 @@ hosting-test: hosting-card
 		-I "$(HOSTING_CARD_MAP)" -L "$(HOSTING_CARD_DIR)" \
 		-Xcc -Wno-duplicate-decl-specifier -Xcc -Wno-parentheses-equality \
 		-Xcc -Wno-implicitly-unsigned-literal -Xcc -Wno-unused-variable \
-		"$(ROOT)/rings/SR-01/HostingAgentProcess.swift" \
-		"$(ROOT)/rings/SR-02/HostingPanelModel.swift" \
+		"$(ROOT)/BR-OUTPUT/HostingAgentProcess.swift" \
+		"$(ROOT)/BR-OUTPUT/HostingPanelModel.swift" \
 		"$(ROOT)/tests/swift/hosting_panel_test.swift" \
 		-o "$(HOSTING_TEST_BIN)" \
 		|| { echo "[FAIL] hosting-test did not compile"; exit 1; }
@@ -1019,6 +1019,7 @@ MAKE_DOLLAR_VARS := ROOT DEV_APP RELEASE_APP DEV_BIN RELEASE_BIN DEV_PROC \
 	LOG_VARIANT \
 	MSG ISSUE WORKER TASK PATHS CRITERIA SECOND REVIEW AUTONOMY CASSETTE \
 	SECOND_TURN QUEEN_COMMAND MUTANTS MUTANTS_LOGIC MUTANTS_GUARD MAKE_DOLLAR_VARS HARNESS_LOCK HARNESS_LOCK_WAIT GUARDS \
+	T27C_BIN HOSTING_CARD_SPEC HOSTING_CARD_SUMS HOSTING_CARD_DIR HOSTING_CARD_MAP HOSTING_TEST_BIN \
 	TYPE_STATE VARIANT_FENCE_SRC VARIANT_FENCE_DIR \
 	VENDOR_SRC VENDOR_BEGIN VENDOR_END VENDOR_ANCHOR VENDOR_HALVES \
 	SOURCES_MANIFEST SOURCES_APP_ONLY SOURCES_TEST_ONLY \

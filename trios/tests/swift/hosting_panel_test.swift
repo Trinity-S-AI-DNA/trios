@@ -1,7 +1,7 @@
 // hosting_panel_test.swift -- the Hosting section's glue against the hosting
 // card (gHashTag/trios#1756). Run with `make hosting-test`, which compiles this
-// file with rings/SR-01/HostingAgentProcess.swift,
-// rings/SR-02/HostingPanelModel.swift and the card's generated C.
+// file with BR-OUTPUT/HostingAgentProcess.swift,
+// BR-OUTPUT/HostingPanelModel.swift and the card's generated C.
 //
 // The card's own rules are tested in the card (t27c test-report, and the C
 // test runner `make hosting-card` runs). What is tested here is that the glue
