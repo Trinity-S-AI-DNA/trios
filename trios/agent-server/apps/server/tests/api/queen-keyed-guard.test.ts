@@ -356,6 +356,49 @@ describe('2. the admission is supervised and its lanes are on the board', () => 
     expect(started()).toEqual([])
   })
 
+  it('a claim that lands after its actor died starts no bee on the lane its death gave back (trios#1763)', async () => {
+    // the simulation gate's keyed world, seed 1072413183: the death gave the
+    // lane back, another issue took it, and the claim then started a bee on
+    // no lane - 5 bees on 4 lanes
+    const starts: number[] = []
+    const cancelled: number[] = []
+    const { clock, sys, d } = harness(1, {
+      start: (issue) =>
+        new Promise<BeeStart>((r) =>
+          clock.after(1000, () => {
+            starts.push(issue)
+            r({
+              claim: true,
+              work: {
+                ended: new Promise<BeeEnd>(() => {}),
+                cancel: () => void cancelled.push(issue),
+              },
+            })
+          }),
+        ),
+    })
+    d.ready(8)
+    await clock.runUntil(10)
+    expect(d.lanesInUse()).toBe(1)
+    sys.exit(d.issues.pidOf(8) as Pid, X_CRASH)
+    await clock.runUntil(20)
+    // no bee runs yet: the lane goes back, and 9 takes it
+    expect(d.stats.lanesFreedOnExit).toBe(1)
+    d.ready(9)
+    await clock.runUntil(30)
+    expect(d.board.lanes.has(9)).toBe(true)
+    // 8's claim lands with no lane under it: its bee is stopped at once
+    await clock.runUntil(1005)
+    expect(starts).toEqual([8])
+    expect(cancelled).toEqual([8])
+    // 9's lands on its lane and runs
+    await clock.runUntil(2000)
+    expect(starts).toEqual([8, 9])
+    expect(cancelled).toEqual([8])
+    expect(d.lanesInUse()).toBe(1)
+    expect(d.stats.standDowns).toBe(0)
+  })
+
   it('a supervisor that gives up says so, and leaves the board as it was', async () => {
     const { clock, sys, d, events, started } = harness(1)
     d.ready(1)

@@ -357,6 +357,37 @@ describe('an orderly stop', () => {
     ])
   })
 
+  it('a call timer that fires before its clock says so still times out at its bound, and its alias dies (trios#1763)', async () => {
+    // call_outcome(999, 1000) is CALL_PENDING; taken as the end, the call
+    // ended pending with its alias alive, and a late reply still landed
+    const clock = new EarlyClock()
+    const sys = createActorSystem(clock, { slices: false })
+    const links = linksOf(sys)
+    let late: CallRequest | undefined
+    const slow = sys.spawn<CallRequest>({
+      name: 'slow',
+      receive: (req) => {
+        late = req
+      },
+    })
+    const caller = sys.spawn({ name: 'c', receive: () => {} })
+    const p = links.call({ self: caller }, slow, 'hi', 1000)
+    await clock.runUntil(999)
+    let settled = false
+    void p.then(() => {
+      settled = true
+    })
+    await clock.runUntil(999)
+    expect(settled).toBe(false)
+    await clock.runUntil(1000)
+    const got = await p
+    expect(got.outcome).toBe(CALL_TIMEOUT)
+    // the alias died with the call: the late reply reaches nobody
+    expect(late).toBeDefined()
+    expect(sys.alive((late as CallRequest).alias)).toBe(false)
+    expect(links.reply(late as CallRequest, 'too late', slow)).not.toBe(0)
+  })
+
   it('a timer that fires before its clock says so still kills at the timeout (trios#1766)', async () => {
     // stop_signal(4999, 5000) is X_NONE; asked once, the kill never came
     const clock = new EarlyClock()

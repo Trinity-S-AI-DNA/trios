@@ -324,21 +324,32 @@ function makeLinks(sys: ActorSystem) {
         receive: (m) => settle(m),
       })
       ref = sys.monitor(alias, to)
-      cancelTimer = clock.after(afterMs, () => {
+      // A timer can fire before its clock says `afterMs` has passed (see
+      // stopTurn in queen-actors.ts, trios#1766): call_outcome is then still
+      // CALL_PENDING, and ending the call with it left the alias alive, so a
+      // late reply landed for a caller that had given up on it. In the bee
+      // dispatcher that was a lane granted to nobody, held for good (the
+      // simulation gate's keyed world, every early-timer seed, trios#1763).
+      // Ask again once the rest has passed.
+      const due = () => {
         if (ended) return
         // a reply or a DOWN already queued wins over the timeout
         const r = queued('reply') as Reply | undefined
         const d = queued('DOWN') as { reason: number } | undefined
+        const waited = u32(clock.now() - t0)
         const outcome = c(
           'call_outcome',
           flag(!!r),
           flag(!!d),
-          u32(clock.now() - t0),
+          waited,
           u32(afterMs),
         )
-        if (outcome === CALL_TIMEOUT) end(outcome)
+        if (outcome === CALL_PENDING)
+          cancelTimer = clock.after(Math.max(1, afterMs - waited), due)
+        else if (outcome === CALL_TIMEOUT) end(outcome)
         else end(outcome, r?.value, r ? undefined : d?.reason)
-      })
+      }
+      cancelTimer = clock.after(afterMs, due)
       sys.send(
         to,
         { kind: 'call', body, alias, callers, depth } as CallRequest,

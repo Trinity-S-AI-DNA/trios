@@ -1,20 +1,31 @@
 # THE ACTOR SIMULATION GATE (gHashTag/t27 specs/queen/simulation.t27,
-# trios#1712 item 5).
+# trios#1712 item 5; keyed actors and the adaptive pool, trios#1763).
 #
 # Every seed of the card plays 10 000 steps of the real actor runtime - the
-# reviewer actors, a pool on two more nodes, the card's fault mix - and runs
-# twice. The job fails when an invariant breaks, when two runs of one seed log
-# differently, or when the seeds together never reach one of the card's rare
-# states. A failure prints the seed, the step, the minimal log tail and the
-# command that replays it, and writes the same to the job summary with the
-# commit.
+# reviewer actors (the fixed 4 or the adaptive pool, with or without the lane
+# queue), a pool on two more nodes, the card's fault mix - and runs twice. The
+# keyed cases play two bee dispatchers over one lease table, half of them on
+# a host whose timers fire early. The job fails when an invariant breaks, when
+# two runs of one seed log differently, or when the seeds together never
+# reach one of the card's rare states. A failure prints the seed, the step,
+# the minimal log tail and the command that replays it, and writes the same
+# to the job summary with the commit.
 #
 # WHY A WORKFLOW OF ITS OWN. Tests (test.yml) runs the same group, server-sim,
 # on PRs into queen and queen-runners, beside every other suite. The actor work
 # lands on actors-next first, where no workflow ran; this one runs there, and
 # only when the runtime, the cards it calls or the simulation change. A soak
 # (more seeds, another base) runs where the code is checked out:
-#   SIM_SEEDS=200 SIM_BASE=7 bun test tests/sim/queen-actors-sim.test.ts
+#   SIM_SEEDS=200 SIM_BASE=7 SIM_KEYED_SEEDS=64 bun test tests/sim/queen-actors-sim.test.ts
+#
+# NIGHTLY ON queen. GitHub runs a `schedule` only from the default branch,
+# which is `main` here, so a cron in this file would never fire.
+# queen-sim-nightly.yml on `main` dispatches this workflow on `queen` every
+# night with `nightly: true`. Such a run that fails files its failure: it
+# comments on the open issue labelled sim-nightly, or opens one, with the
+# seed, the first broken invariant and the command that replays it.
+# `recreate` puts one old defect back into the keyed cases, to show that path
+# end to end; the gate itself never sets it.
 name: Actor simulation
 
 on:
@@ -24,14 +35,16 @@ on:
     paths:
       - .github/workflows/queen-actors-sim.yml
       - trios/agent-server/apps/server/src/api/services/queen-actor*.ts
+      - trios/agent-server/apps/server/src/api/services/queen-bee-actors*.ts
       - trios/agent-server/apps/server/src/api/services/queen-review-actors.ts
+      - trios/agent-server/apps/server/src/api/services/queen-review-lanes.ts
       - trios/agent-server/apps/server/src/api/services/queen-review-loop.ts
       - trios/agent-server/apps/server/src/api/services/queen-card-wasm.ts
-      - trios/agent-server/apps/server/src/api/services/queen-actors-card.gen.js
-      - trios/agent-server/apps/server/src/api/services/queen-reviewer-card.gen.js
-      - trios/agent-server/apps/server/src/api/services/queen-simulation-card.gen.js
+      - trios/agent-server/apps/server/src/api/services/queen-*-card.gen.*
       - trios/agent-server/specs/queen/actors.*
-      - trios/agent-server/specs/queen/reviewer.*
+      - trios/agent-server/specs/queen/keyed*.*
+      - trios/agent-server/specs/queen/reviewer*.*
+      - trios/agent-server/specs/queen/review_lanes.*
       - trios/agent-server/specs/queen/simulation.*
       - trios/agent-server/specs/PIN
       - trios/agent-server/apps/server/tests/sim/**
@@ -41,18 +54,35 @@ on:
     paths:
       - .github/workflows/queen-actors-sim.yml
       - trios/agent-server/apps/server/src/api/services/queen-actor*.ts
+      - trios/agent-server/apps/server/src/api/services/queen-bee-actors*.ts
       - trios/agent-server/apps/server/src/api/services/queen-review-actors.ts
+      - trios/agent-server/apps/server/src/api/services/queen-review-lanes.ts
       - trios/agent-server/apps/server/src/api/services/queen-review-loop.ts
       - trios/agent-server/apps/server/src/api/services/queen-card-wasm.ts
-      - trios/agent-server/apps/server/src/api/services/queen-actors-card.gen.js
-      - trios/agent-server/apps/server/src/api/services/queen-reviewer-card.gen.js
-      - trios/agent-server/apps/server/src/api/services/queen-simulation-card.gen.js
+      - trios/agent-server/apps/server/src/api/services/queen-*-card.gen.*
       - trios/agent-server/specs/queen/actors.*
-      - trios/agent-server/specs/queen/reviewer.*
+      - trios/agent-server/specs/queen/keyed*.*
+      - trios/agent-server/specs/queen/reviewer*.*
+      - trios/agent-server/specs/queen/review_lanes.*
       - trios/agent-server/specs/queen/simulation.*
       - trios/agent-server/specs/PIN
       - trios/agent-server/apps/server/tests/sim/**
       - trios/agent-server/apps/server/tests/api/queen-virtual-clock.ts
+  workflow_dispatch:
+    inputs:
+      nightly:
+        description: A nightly run - a failure comments on, or opens, the sim-nightly issue
+        type: boolean
+        default: false
+      recreate:
+        description: Put one old defect back into the keyed cases (shows the failure path)
+        type: choice
+        default: none
+        options:
+          - none
+          - pid-holder
+          - unsupervised-admission
+          - slot-chain
 
 permissions:
   contents: read
@@ -62,6 +92,9 @@ jobs:
     name: Actor simulation / seeded runs
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
     defaults:
       run:
         working-directory: trios/agent-server
@@ -84,4 +117,41 @@ jobs:
 
       - name: Simulate
         working-directory: trios/agent-server/apps/server
+        env:
+          SIM_REPORT: ${{ runner.temp }}/sim-report.json
+          SIM_RECREATE: ${{ github.event_name == 'workflow_dispatch' && inputs.recreate != 'none' && inputs.recreate || '' }}
         run: bun run test:sim
+
+      # A nightly run that fails says so where the owner looks: one open
+      # issue labelled sim-nightly, a comment per failed night. The text is the
+      # gate's own report (SIM_REPORT); nothing here judges it.
+      - name: File the failure on the sim-nightly issue
+        if: failure() && github.event_name == 'workflow_dispatch' && inputs.nightly
+        working-directory: trios/agent-server/apps/server
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ runner.temp }}/sim-report.json
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="$RUNNER_TEMP/sim-nightly.md"
+          {
+            echo "**Actor simulation failed on \`${GITHUB_REF_NAME}\`** at \`${GITHUB_SHA}\`: $RUN_URL"
+            echo
+            if [ -s "$REPORT" ]; then
+              jq -r '.broken[0] // empty | "First broken invariant: **\(.name)** (invariant \(.invariant)), seed \(.seed), \(.world) world, features \(.features), step \(.step).\n\n\(.text)\n\nReplay from `trios/agent-server/apps/server`:\n\n```\n\(.replay)\n```"' "$REPORT"
+              echo
+              jq -r '"All failures (\(.broken | length)) of \(.cases) cases, \(.totalMs) ms:\n\n" + ([.broken[] | "- invariant \(.invariant) \(.name): seed \(.seed) (\(.world), features \(.features)), step \(.step)"] | join("\n"))' "$REPORT"
+            else
+              echo "The gate wrote no report: it failed before its cases ran. See the run's log."
+            fi
+          } > "$body"
+          gh label create sim-nightly --repo "$GITHUB_REPOSITORY" --color B60205 \
+            --description "The nightly actor simulation gate failed" 2>/dev/null || true
+          open=$(gh issue list --repo "$GITHUB_REPOSITORY" --label sim-nightly --state open \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --repo "$GITHUB_REPOSITORY" --body-file "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --label sim-nightly \
+              --title "Nightly actor simulation failed on ${GITHUB_REF_NAME}" --body-file "$body"
+          fi
