@@ -48,6 +48,23 @@ export const MSG_CRITERIA = "missing: ## Success Criteria -- an outcome a machin
 // t27c gen-ts: fn put was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn put_line was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn check_issue was not emitted -- this backend lowers declarations, not bodies.
+export const PACK = 4294967296 satisfies number;
+// t27c gen-ts: fn boundary_line was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn path_token_end was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn line_path was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn line_region was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn skip_at was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn defines_at was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn item_span was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn edit_inside was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -59,7 +76,7 @@ export const MSG_CRITERIA = "missing: ## Success Criteria -- an outcome a machin
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["LIST_END", "LIST_SEP", "C_BOUNDARY", "C_SCENARIOS", "C_REQUIREMENTS", "C_CRITERIA", "C_ALL", "SCENARIO_HEADS", "GIVEN_WORDS", "THEN_WORDS", "REQUIREMENT_HEADS", "OBLIGATION_WORDS", "CRITERIA_HEADS", "UNITS", "SOURCE_EXTS", "TOOLS", "BOUNDARY_HEAD", "MSG_BOUNDARY", "MSG_SCENARIOS", "MSG_REQUIREMENTS", "MSG_CRITERIA"] as const;
+export const __DECL_ORDER__ = ["LIST_END", "LIST_SEP", "C_BOUNDARY", "C_SCENARIOS", "C_REQUIREMENTS", "C_CRITERIA", "C_ALL", "SCENARIO_HEADS", "GIVEN_WORDS", "THEN_WORDS", "REQUIREMENT_HEADS", "OBLIGATION_WORDS", "CRITERIA_HEADS", "UNITS", "SOURCE_EXTS", "TOOLS", "BOUNDARY_HEAD", "MSG_BOUNDARY", "MSG_SCENARIOS", "MSG_REQUIREMENTS", "MSG_CRITERIA", "PACK"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

@@ -45,6 +45,7 @@ import { importRunnerBranch } from '../routes/queen-export'
 import { outstandingEscalations } from '../routes/queen-needs-you'
 import { actorEventsOn } from './queen-actor-events'
 import { advanceApp } from './queen-app'
+import { roundChooser } from './queen-batch-choose'
 import {
   dispatchByActors,
   handRoundToBeeActors,
@@ -2082,9 +2083,25 @@ export async function runRound(
     candidateBodies,
     tasks: openingBoard,
   })
+  // TRIOS_QUEEN_DISPATCH_BATCH=on (t27#9021): one chooser call fills every
+  // free lane with edits that meet no other (queen-batch-choose.ts); off, the
+  // round asks queend again after every pick, as before.
+  const plan = await roundChooser(choice, {
+    candidates,
+    bodies: candidateBodies,
+    board: openingBoard,
+    repo,
+    ask: (tasks) =>
+      askQueend({ kind: 'choose', candidates, candidateBodies, tasks }),
+    onBatch: (b) =>
+      logger.info('Queen batch chose', {
+        picks: b.picks,
+        relaxed: b.relaxed.length,
+      }),
+  })
   lap('choose')
 
-  await recordTick(pool, holder, grant.fence, choice)
+  await recordTick(pool, holder, grant.fence, plan.decision)
   logger.info('Queen tick decided', {
     chosen: choice.chosen ?? null,
     refusal: choice.refusal ?? null,
@@ -2129,7 +2146,7 @@ export async function runRound(
     room?: { resource: 'memory' | 'disk'; summary: string }
   }> = []
   let board = [...registry.rows[0].tasks, ...containerTasks]
-  let current: QueendChoice | null = choice
+  let current: QueendChoice | null = plan.first
   // Only a bee that is still running is spending its key. A finished dispatch
   // waiting for a verdict holds its issue and its files; it is not making
   // requests, so withholding its key from the next bee would shrink the swarm
@@ -2264,12 +2281,7 @@ export async function runRound(
     // `queend` applies canStartAnother itself, so the loop ends when the policy
     // says so rather than on a count kept here - two places counting workers is
     // how they come to disagree.
-    current = await askQueend({
-      kind: 'choose',
-      candidates,
-      candidateBodies,
-      tasks: board,
-    })
+    current = await plan.next(board)
     // And again on the board that grew. This is the ONLY place the capacity
     // gate actually bites - the opening board is at the limit only when the
     // round has nothing to do anyway - so a cross-check that skipped it would
