@@ -24,6 +24,7 @@ import {
   itemSpan,
   planBatch,
   readAnswer,
+  regionsEnabled,
   roundChooser,
 } from '../../src/api/services/queen-batch-choose'
 import { GC_EDIT_DERIVED } from '../../src/api/services/queen-golden-chain-card.gen'
@@ -67,39 +68,65 @@ const base = async (path: string) =>
 const body = (...lines: string[]) =>
   ['## Requirements', '', '## Boundary', '', ...lines, ''].join('\n')
 
+const REGIONS = body(
+  '- bootstrap/src/compiler.rs :: fn alpha',
+  '- `bootstrap/src/compiler.rs` :: gamma',
+  '- bootstrap/src/compiler.rs :: fn nowhere',
+  '- specs/queen/holds.t27',
+)
+
 describe('a Boundary, as edits', () => {
-  it('a named item is its lines at the base; anything else is the whole file', async () => {
+  it('regions on: a named item is its lines at the base; anything else is the whole file', async () => {
     expect(itemSpan(SRC, 'beta')).toEqual([5, 8])
-    const edits = await editsOf(
-      body(
-        '- bootstrap/src/compiler.rs :: fn alpha',
-        '- `bootstrap/src/compiler.rs` :: gamma',
-        '- bootstrap/src/compiler.rs :: fn nowhere',
-        '- specs/queen/holds.t27',
-      ),
-      base,
-      false,
-    )
+    const edits = await editsOf(REGIONS, base, false, true)
     expect(edits).toEqual([
-      { path: 'bootstrap/src/compiler.rs', kind: EDIT_LINES, lo: 1, hi: 4 },
-      { path: 'bootstrap/src/compiler.rs', kind: EDIT_LINES, lo: 8, hi: 9 },
+      {
+        path: 'bootstrap/src/compiler.rs',
+        kind: EDIT_LINES,
+        lo: 1,
+        hi: 4,
+        item: 'alpha',
+      },
+      {
+        path: 'bootstrap/src/compiler.rs',
+        kind: EDIT_LINES,
+        lo: 8,
+        hi: 9,
+        item: 'gamma',
+      },
       { path: 'bootstrap/src/compiler.rs', kind: EDIT_WHOLE, lo: 0, hi: 0 },
       { path: 'specs/queen/holds.t27', kind: EDIT_WHOLE, lo: 0, hi: 0 },
     ])
+  })
+  it('regions off (the default): every line is its whole file, and no base is read', async () => {
+    expect(regionsEnabled({})).toBe(false)
+    expect(regionsEnabled({ TRIOS_QUEEN_REGIONS: 'on' })).toBe(true)
+    let reads = 0
+    const counted = async (path: string) => {
+      reads += 1
+      return base(path)
+    }
+    expect(await editsOf(REGIONS, counted, false, false)).toEqual([
+      whole('bootstrap/src/compiler.rs'),
+      whole('bootstrap/src/compiler.rs'),
+      whole('bootstrap/src/compiler.rs'),
+      whole('specs/queen/holds.t27'),
+    ])
+    expect(reads).toBe(0)
   })
   it('a derived record is GC_EDIT_DERIVED only with the flag', async () => {
     const b = body(
       '- .trinity/seals/queen_QueenHolds.json',
       '- bootstrap/stage0/FROZEN_HASH',
     )
-    expect((await editsOf(b, base, true)).map((e) => e.kind)).toEqual([
-      GC_EDIT_DERIVED,
-      GC_EDIT_DERIVED,
-    ])
-    expect((await editsOf(b, base, false)).map((e) => e.kind)).toEqual([
-      EDIT_WHOLE,
-      EDIT_WHOLE,
-    ])
+    for (const regions of [false, true]) {
+      expect(
+        (await editsOf(b, base, true, regions)).map((e) => e.kind),
+      ).toEqual([GC_EDIT_DERIVED, GC_EDIT_DERIVED])
+      expect(
+        (await editsOf(b, base, false, regions)).map((e) => e.kind),
+      ).toEqual([EDIT_WHOLE, EDIT_WHOLE])
+    }
   })
 })
 
@@ -295,6 +322,43 @@ describe('the round seam', () => {
     })
     expect(held.first.allowed).toBe(false)
   })
+  it('TRIOS_QUEEN_REGIONS: a region apart from the holder runs only with the flag on', async () => {
+    const held = {
+      allowed: false,
+      chosen: null,
+      refusal: 'nothing to choose',
+      skipped: ['#41: bootstrap/src/compiler.rs held by gHashTag/t27#4'],
+    }
+    const regionCtx = {
+      candidates: [41],
+      bodies: {
+        '41': body('- bootstrap/src/compiler.rs :: fn gamma'),
+        '4': body('- bootstrap/src/compiler.rs :: fn alpha'),
+      },
+      board: [
+        {
+          issue: { owner: 'gHashTag', repo: 't27', number: 4 },
+          state: 'running',
+          ownedPaths: [RS],
+        },
+      ],
+      repo: 'gHashTag/t27',
+      readBase: base,
+      ask: async () => held,
+    }
+    const env = { TRIOS_QUEEN_DISPATCH_BATCH: 'on' }
+    const on = await roundChooser(held, {
+      ...regionCtx,
+      env: { ...env, TRIOS_QUEEN_REGIONS: 'on' },
+    })
+    expect(on.first.chosen).toBe(41)
+    // off: both lines are the whole file, so #41 stays behind #4 as before regions
+    const off = await roundChooser(held, { ...regionCtx, env })
+    expect(off.first.allowed).toBe(false)
+    expect(off.decision.skipped).toContain(
+      '#41: bootstrap/src/compiler.rs held by gHashTag/t27#4',
+    )
+  })
   it('a refusal without sentences (capacity, money) stands', async () => {
     const full = {
       allowed: false,
@@ -316,6 +380,7 @@ describe('the round seam', () => {
       repo: 'gHashTag/t27',
       cap: 2,
       derivedFree: false,
+      regions: false,
       readBase: base,
     })
     expect(b.picks).toEqual([])

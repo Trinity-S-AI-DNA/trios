@@ -49,6 +49,7 @@ import {
   witnessSpecs,
   worktreeDirtCount,
 } from './queen-dispatch'
+import type { RegionCheck, RegionCheckInput } from './queen-region-merge'
 import { parseVerdictBlocks } from './queen-tick'
 import { stepMayStart, stepSignal } from './queen-turn-stop'
 
@@ -820,6 +821,12 @@ export interface ReviewDeps {
   importRunnerBranch?: (
     issue: number,
   ) => Promise<{ ok: true; imported: boolean } | { ok: false; error: string }>
+  /**
+   * The merge side of a declared region (queen-region-merge.ts, behind
+   * TRIOS_QUEEN_REGIONS): before an accept stands, a bee that left its region
+   * onto live work goes back. Optional for fakes; absent, the verdict stands.
+   */
+  regionCheck?: (input: RegionCheckInput) => Promise<RegionCheck>
 }
 
 export function defaultReviewDeps(): ReviewDeps {

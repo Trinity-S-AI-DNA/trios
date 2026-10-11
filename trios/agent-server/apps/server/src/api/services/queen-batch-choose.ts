@@ -17,7 +17,9 @@
  *   - queend still decides claims, completion, the spec rule, capacity, money
  *     and who holds what (its first answer, unchanged);
  *   - policy/issue_shape.t27 reads each Boundary line's path and region and
- *     resolves a region to its lines at the base commit (item_span);
+ *     resolves a region to its lines at the base commit (item_span), only
+ *     with TRIOS_QUEEN_REGIONS, because only then does the review check at
+ *     merge that a bee kept to its region (queen-region-merge.ts);
  *   - ci/derived_data.t27 says which paths are derived records, marked
  *     GC_EDIT_DERIVED only with TRIOS_QUEEN_DERIVED_FREE;
  *   - queen/holds.t27 held_part says whether two paths share files;
@@ -56,12 +58,24 @@ export const derivedFreeEnabled = (
   env: Record<string, string | undefined> = process.env,
 ): boolean => (env.TRIOS_QUEEN_DERIVED_FREE ?? '').trim() === 'on'
 
+/**
+ * TRIOS_QUEEN_REGIONS=on: a Boundary line `path :: fn NAME` is the lines of
+ * that item, and the review checks at merge that the bee kept to them
+ * (queen-region-merge.ts). Off, every line is its whole file, as before
+ * regions existed, so nothing is admitted that the merge side does not check.
+ */
+export const regionsEnabled = (
+  env: Record<string, string | undefined> = process.env,
+): boolean => (env.TRIOS_QUEEN_REGIONS ?? '').trim() === 'on'
+
 /** One edit a Boundary line asks for: a path, a kind, and lines for EDIT_LINES. */
 export interface Edit {
   path: string
   kind: number
   lo: number
   hi: number
+  /** For EDIT_LINES: the item the line named, for the merge side's reason. */
+  item?: string
 }
 
 const half = (v: bigint): [number, number] => [
@@ -102,11 +116,13 @@ export function itemSpan(text: string, name: string): [number, number] | null {
 /**
  * The edits an issue body's Boundary asks for, in its own order. A region
  * that does not resolve at the base is the whole file (issue_shape.t27).
+ * Without `regions` every line is its whole file and no base is read.
  */
 export async function editsOf(
   body: string,
   readBase: ReadBase,
   derivedFree: boolean,
+  regions: boolean,
 ): Promise<Edit[]> {
   const lines: Array<{ path: string; region: string | null }> = []
   const card = shape()
@@ -124,14 +140,15 @@ export async function editsOf(
       region: rt > rf ? card.read(b.at + rf, rt - rf) : null,
     })
   }
+  if (!regions) return lines.map(({ path }) => wholeEdit(path, derivedFree))
   const edits: Edit[] = []
   for (const { path, region } of lines) {
     const text = region === null ? null : await readBase(path)
     const span =
       text === null || region === null ? null : itemSpan(text, region)
     edits.push(
-      span && !(derivedFree && isDerived(path))
-        ? { path, kind: EDIT_LINES, lo: span[0], hi: span[1] }
+      span && region !== null && !(derivedFree && isDerived(path))
+        ? { path, kind: EDIT_LINES, lo: span[0], hi: span[1], item: region }
         : wholeEdit(path, derivedFree),
     )
   }
@@ -152,6 +169,21 @@ export const wholeEdit = (path: string, derivedFree: boolean): Edit => ({
   lo: 0,
   hi: 0,
 })
+
+/**
+ * What a holder still holds of its own: for each path it holds (holds.t27),
+ * its declared edits of that path, else the whole path. One reading for the
+ * round's admission and the review's merge side.
+ */
+export const stillHeld = (
+  held: string[],
+  declared: Edit[],
+  derivedFree: boolean,
+): Edit[] =>
+  held.flatMap((path) => {
+    const mine = declared.filter((e) => heldPart(e.path, path) !== HP_APART)
+    return mine.length > 0 ? mine : [wholeEdit(path, derivedFree)]
+  })
 
 /** Whether two edits meet: their paths share files (held_part) and gc_pair says MEET. */
 export function editsMeet(a: Edit, b: Edit): boolean {
@@ -334,6 +366,8 @@ export async function planBatch(input: {
   repo: string
   cap: number
   derivedFree: boolean
+  /** TRIOS_QUEEN_REGIONS: a `:: fn NAME` line is its lines, not the file. */
+  regions: boolean
   readBase: ReadBase
 }): Promise<Batch & { paths: Map<number, string[]> }> {
   const reading = readAnswer(input.answer)
@@ -347,6 +381,7 @@ export async function planBatch(input: {
           input.bodies[String(n)] ?? '',
           input.readBase,
           input.derivedFree,
+          input.regions,
         ),
       )
   const holders = new Map<string, Edit[]>()
@@ -357,16 +392,10 @@ export async function planBatch(input: {
     const [own, number] = slug.split('#')
     const body = own === input.repo ? input.bodies[number ?? ''] : undefined
     const declared = body
-      ? await editsOf(body, input.readBase, input.derivedFree)
+      ? await editsOf(body, input.readBase, input.derivedFree, input.regions)
       : []
     // what it still holds: its declared edits of a held path, else the whole path
-    holders.set(
-      slug,
-      held.flatMap((path) => {
-        const mine = declared.filter((e) => heldPart(e.path, path) !== HP_APART)
-        return mine.length > 0 ? mine : [wholeEdit(path, input.derivedFree)]
-      }),
-    )
+    holders.set(slug, stillHeld(held, declared, input.derivedFree))
   }
   const running = board.filter(
     (t) => t.state === 'running' || t.state === 'queued',
@@ -434,6 +463,7 @@ export async function roundChooser<C extends ChoiceLike>(
     repo: ctx.repo,
     cap: Number(env.TRIOS_QUEEN_MAX_WORKERS ?? '') || 4,
     derivedFree: derivedFreeEnabled(env),
+    regions: regionsEnabled(env),
     readBase: ctx.readBase ?? readBaseFile(),
   })
   ctx.onBatch?.(batch)

@@ -92,6 +92,7 @@ import {
 import { drainBoundedEnabled } from './queen-drain'
 import { pruneEvents, wakesHere } from './queen-events'
 import { ACTOR_STREAM } from './queen-events.gen'
+import { GC_RV_SEND_BACK, GC_RV_WAIT } from './queen-golden-chain-card.gen'
 import { heldPaths, type IssueNow } from './queen-holds'
 import {
   advanceJobs,
@@ -107,6 +108,7 @@ import {
   queenLeaseDatabaseUrl,
   releaseQueenLease,
 } from './queen-lease'
+import { checkRegions, noRegionCheck, regionDeps } from './queen-region-merge'
 import {
   containerRefusal,
   type DispatchReportOutcome,
@@ -3311,6 +3313,15 @@ export async function reviewFinishedDispatches(
         await contributorRuntime(pool, environmentContributorKeys()),
       ),
     importRunnerBranch: (issue) => importRunnerBranch(pool, issue),
+    // TRIOS_QUEEN_REGIONS off: it reads nothing and every verdict stands
+    regionCheck: (input) =>
+      checkRegions(
+        input,
+        regionDeps(pool, async (n) => {
+          const repo = process.env.TRIOS_GITHUB_REPO || 'gHashTag/trios'
+          return (await bodiesFor(repo, [n]))[String(n)] ?? null
+        }),
+      ),
     ...overrides,
   })
   // a stopped review writes nothing from here on
@@ -4238,6 +4249,20 @@ export async function reviewFinishedDispatches(
       heldForReviewer && reviewerMisses >= REVIEWER_MISS_CEILING
     if (reviewerGaveUp) state = 'escalate'
 
+    // A REGION KEPT AT MERGE (golden_chain.t27 section 5, TRIOS_QUEEN_REGIONS).
+    // Admission let two bees into one file on their declared regions; an
+    // accept whose diff left its region onto live work goes back, and one
+    // whose diff could not be read waits. Off, or for any other verdict, the
+    // check reads nothing and the verdict stands.
+    const region = await (deps.regionCheck ?? noRegionCheck)({
+      issue,
+      accepting: state === 'accept',
+      head: branchHead,
+      mergeBase: readMergeBase,
+    })
+    if (region.answer === GC_RV_SEND_BACK) state = 'sendBack'
+    if (region.answer === GC_RV_WAIT) state = 'wait'
+
     // Judged versus unjudged, recorded per dispatch (#1420, FR-001): "2 of 5
     // judged" is a fact about the worker's reporting, not about the work, and
     // the two belong in the record as separate numbers. The compiler's failed
@@ -4288,7 +4313,10 @@ export async function reviewFinishedDispatches(
     const countsAgainstTheIssue =
       !unchangedSinceJudged &&
       !containerSpokeForTheBee &&
-      (machineFailed.length > 0 || admitted.length > 0 || refuted.length > 0)
+      (machineFailed.length > 0 ||
+        admitted.length > 0 ||
+        refuted.length > 0 ||
+        region.counts)
 
     // BEYOND WHAT A PATCH SHOWS. The reviewer read the commit, refuted
     // nothing, and could not establish the rest - a criterion that needs a
@@ -4478,8 +4506,8 @@ export async function reviewFinishedDispatches(
         ? `${freeAttempts} consecutive attempts produced nothing judgeable ` +
             '(no commit, or no criterion anyone could establish), so this is ' +
             'handed to a person instead of being retried again. Last review: ' +
-            judgedNote
-        : judgedNote,
+            (region.note || judgedNote)
+        : region.note || judgedNote,
     )
     live()
     await recordVerdict(pool, issue, {
