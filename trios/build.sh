@@ -223,6 +223,9 @@ if [ -z "${TRIOS_INCLUDE_PROTOTYPES:-}" ]; then
         "GitHubModels.swift"
         "GitWorkspaceView.swift"
         "GlassmorphismBackground.swift"
+        "HostingAgentProcess.swift"
+        "HostingPanelModel.swift"
+        "HostingPanelView.swift"
         "HotkeyBar.swift"
         "LLMClient.swift"
         "LogsTabView.swift"
@@ -608,6 +611,23 @@ fi
 # `make mutants-guard` used to carry its own resolution of the three -I
 # directories, and a copy that is merely kept in step is a copy that will
 # eventually not be.
+# The hosting card, gHashTag/t27 specs/hosting/panel.t27 (trios#1756): every
+# rule of the Hosting section, generated to C by `make hosting-card` and
+# imported as T27HostingPanel. The module map is committed; the header and the
+# library it names are build products, so a build without them is refused
+# here by name rather than as "no such module" two minutes in. The -Xcc flags
+# silence the four warnings gen-c's output carries in every importer (a doubled
+# const, parenthesised equality, u64 literals, unused word tables); they are
+# t27c's to fix (t27#8976), not this app's.
+HOSTING_CARD_MAP_DIR="$PROJECT_DIR/bridge/T27HostingPanel"
+HOSTING_CARD_LIB_DIR="$PROJECT_DIR/.trinity/build/t27/T27HostingPanel"
+if [ -z "$TRIOS_PRINT_ONLY" ] && { [ ! -f "$HOSTING_CARD_LIB_DIR/libT27HostingPanel.a" ] \
+        || [ ! -f "$HOSTING_CARD_LIB_DIR/hosting_panel.h" ]; }; then
+    echo "[FAIL] the hosting card is not built: $HOSTING_CARD_LIB_DIR"
+    echo "       Run 'make hosting-card' (make dev runs it first)."
+    exit 1
+fi
+
 SWIFTC_MODULE_FLAGS=(
     -I "$CSQLCIPHER_MODULEMAP_DIR"
     -I "$SQLCIPHER_INCLUDE"
@@ -616,6 +636,12 @@ SWIFTC_MODULE_FLAGS=(
     -I "$QUEEN_MODULE_DIR"
     -L "$QUEEN_BIN_DIR"
     -lQueenUILib
+    -I "$HOSTING_CARD_MAP_DIR"
+    -L "$HOSTING_CARD_LIB_DIR"
+    -Xcc -Wno-duplicate-decl-specifier
+    -Xcc -Wno-parentheses-equality
+    -Xcc -Wno-implicitly-unsigned-literal
+    -Xcc -Wno-unused-variable
 )
 if [ -d "$XCTEST_FRAMEWORKS_DIR" ]; then
     SWIFTC_MODULE_FLAGS+=(-F "$XCTEST_FRAMEWORKS_DIR")

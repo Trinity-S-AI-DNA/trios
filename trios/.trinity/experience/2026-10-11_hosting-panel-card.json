@@ -1,0 +1,28 @@
+{
+  "timestamp": "2026-10-11T09:10:00Z",
+  "task_id": "HOSTING-PANEL-001",
+  "tracking_issues": [
+    "https://github.com/gHashTag/trios/issues/1870",
+    "https://github.com/gHashTag/trios/issues/1756",
+    "https://github.com/gHashTag/t27/issues/8975",
+    "https://github.com/gHashTag/t27/issues/8988",
+    "https://github.com/gHashTag/t27/issues/8976"
+  ],
+  "contract": "The app lends this Mac through trios-host join and shows what the host's work used and what the public ledger credits it. Every rule is gHashTag/t27 specs/hosting/panel.t27, generated to C by make hosting-card and imported as a Clang module; Swift holds views and I/O only.",
+  "red": [
+    "Card negative controls (8 + 1), each FAIL by name in t27c test-report: size not checked, the Queen's host boundary dropped, toggle-off skipping stopping, a refused receipt counted as agreed, no leaf read as not verified, settlement ignored by the disclaimer, every host's rows tallied, a failure after registration not a lapse, a key file readable by others called private.",
+    "Swift negative controls in make hosting-test: the tally given no host id, the last partial line dropped, no pin check before start (each FAIL), and no SIGKILL after the grace (the test hangs and the 60 s alarm kills it)."
+  ],
+  "green": {
+    "card": "t27c test-report 18/18, 0 vacuous; pinned t27b 18/18; the generated C's own runner prints All 18 tests passed.",
+    "swift": "make hosting-test: All hosting panel tests passed.",
+    "build": "make dev: dev app built, 0 compiler warnings; make sources-drift and make parse-tests pass.",
+    "local_run": "DEV app with TRIOS_HOST_HOME=~/.trios-host-owner registered with https://api.t27.ai as host 57c4f5d613622106, tier owner, 1 slot, isolation job-dir-only; the ledger showed 0 mTRI and probation 0 of 10; the epoch 0 statement had no leaf for this host."
+  },
+  "lessons": [
+    "A gen-c file imported whole as a module header links twice under -O: swiftc emits the bodies of the C functions it calls. The header is the generated file cut at the Function implementations banner.",
+    "A card constant named EV_RECEIPT collides with <sys/event.h> in every Swift file that also imports Darwin. Name card constants so no system header holds them.",
+    "gen-c resolves `use` lazily against the nearest specs/ directory, but a module imported whole (network/mvp.t27 imports queen::actors) drags a large closure; import from modules that import nothing when the card is vendored.",
+    "Screen capture from the agent's shell is refused (no Screen Recording grant); the Claude terminal tab has it."
+  ]
+}

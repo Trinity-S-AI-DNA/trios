@@ -61,6 +61,13 @@ struct TriosTabView: View {
             Spacer()
 
             HStack(spacing: 8) {
+                HostingBalanceBadge(open: {
+                    HostingPanelModel.shared.requestFocus()
+                    if let mesh = Trinity999TabMap.route(for: .mesh) {
+                        QueenHostNavigation.open(petalIndex: mesh.petalIndex)
+                    }
+                })
+
                 HStack(spacing: 4) {
                     Circle()
                         .fill(viewModel.isServerReachable ? Color.green : Color.grokDim)

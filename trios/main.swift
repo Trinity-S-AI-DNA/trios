@@ -50,6 +50,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         accessibilityGranted = AXIsProcessTrusted()
         setupGlobalHotkey()
         serverManager.startIfNeeded()
+        // Hosting (trios#1756): stop an agent a killed run left behind, start
+        // the clocks that read the ledger, and lend the Mac again when the
+        // user left the toggle on.
+        HostingPanelModel.shared.resumeIfWanted()
 
         // Lower the keychain launch gate after bootstrap settles.  The gate
         // starts raised so no keychain read can block the main thread during
@@ -812,6 +816,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // The hosting agent stops before the app does: SIGTERM, then SIGKILL
+        // after the card's STOP_GRACE_SECONDS. Synchronous on purpose - the
+        // process is gone when this returns.
+        HostingPanelModel.shared.stopForQuit()
         sessionGuard?.stopMonitoring()
         cladeGuard?.stopMonitoring()
         AuditRotationScheduler.shared.stop()

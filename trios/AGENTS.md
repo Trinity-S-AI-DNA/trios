@@ -9,6 +9,19 @@
 
 ---
 
+## Only t27: everything in this app is to be rewritten in .t27 (owner, 2026-10-11)
+
+> Owner, 2026-10-11 (translated): "start. write it in .t27 right away, build the bridge in .t27 right away, and record in AGENTS.md that everything is to be rewritten in .t27."
+
+- **Only t27: everything in this app is to be rewritten in `.t27`.**
+- **New logic is written in `.t27`** - every rule, threshold, word table and state transition. The card lives in gHashTag/t27 and is vendored here byte-identical under `specs/`, with its SHA-256 in a `SHA256SUMS` beside it.
+- **It reaches Swift through the generated-C bridge:** `t27c gen-c` in a Make step, a static library, a Clang module map under `bridge/`, and `import` in Swift. The generated C is a build product, never committed and never edited. The first card is `specs/hosting/panel.t27` (`make hosting-card`; gHashTag/t27#8975).
+- **Swift keeps views and I/O glue only:** SwiftUI, `Process`, HTTP, the OS, and calls into the card. A decision written in Swift is a defect.
+- **Existing Swift is debt that only shrinks.** A change may move a rule from Swift into a card, never the other way.
+- **The target is `t27c gen-swift`**, tracked as gHashTag/t27#8976 under the self-hosting epic gHashTag/t27#5980. When it lands, the C bridge goes.
+
+---
+
 ## Constitutional Stack
 
 | Order | File | Role |

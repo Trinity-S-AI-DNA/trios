@@ -115,8 +115,8 @@ Follow the 9-phase PHI LOOP for ring-based development:
 1. **Issue** — Define problem or requirement (GitHub issue #N)
 2. **Spec** — Write agent instruction or skill spec
 3. **TDD** — Define test criteria (build passes, e2e passes, no regressions)
-4. **Code/Impl** — Implement in Swift according to spec
-5. **Gen** — Not applicable (trios has no code generator; Swift is canonical)
+4. **Code/Impl** — Implement the rule in its `.t27` card; Swift only for views and I/O glue (AGENTS.md, "Only t27")
+5. **Gen** — `t27c gen-c` for every card the app imports, in the build (`make hosting-card`); Swift is not canonical, it is debt that only shrinks (AGENTS.md, "Only t27"; `t27c gen-swift` is gHashTag/t27#8976)
 6. **Seal** — Verify build and run e2e
 7. **Verify** — Run tests, check UI anomalies
 8. **Land** — Merge changes to `dev` branch

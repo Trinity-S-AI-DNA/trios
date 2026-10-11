@@ -92,7 +92,7 @@ $(error recursive make detected at MAKELEVEL=$(MAKELEVEL), target '$(MAKECMDGOAL
 endif
 
 .DEFAULT_GOAL := dev
-.PHONY: help dev release build keychain-doors make-dollars empty-sources watch-empties check test cassettes e2e shake run run-release stop clean promote doctor chat-probe verify restart xctest delegate-probe drift-guard finish-mark-order guard-shapes parse-tests vendor-step warnings warning-gate
+.PHONY: help dev release build keychain-doors make-dollars empty-sources watch-empties check test cassettes e2e shake run run-release stop clean promote doctor chat-probe verify restart xctest delegate-probe drift-guard finish-mark-order guard-shapes parse-tests vendor-step warnings warning-gate hosting-card hosting-test
 
 help:
 	@echo "TriOS targets:"
@@ -135,6 +135,9 @@ help:
 	@echo "  make guard-shapes - check the load-bearing guards are still in their files"
 	@echo "  make vendor-step - check build.sh still vendors both halves of QueenUILib (runs before every dev build)"
 	@echo "  make warnings   - full compiler-warning count for the whole tree (own build dir; first run is cold)"
+	@echo "  make hosting-card - generate the hosting card's C from specs/hosting/panel.t27, run its tests,"
+	@echo "                    build the library Swift imports (runs before every app build)"
+	@echo "  make hosting-test - run tests/swift/hosting_panel_test.swift against the card"
 
 # --- Building -----------------------------------------------------------
 
@@ -320,7 +323,7 @@ WARN_LOG_LAST := $(WARN_LOG_DIR)/trios_build_dev.log
 WARN_LOG :=
 WARN_BUILD_ID :=
 
-dev: vendor-step
+dev: vendor-step hosting-card
 	@# The per-file warning cache does not survive a build (#1264, second round).
 	@# An entry outlives the truth it recorded. Driven, both directions: warnings
 	@# planted and then removed left the cache reporting 8 on a tree holding 4,
@@ -555,7 +558,7 @@ WARN_FULL_CACHE := $(WARN_FULL_ROOT)/dev
 DEV_BUILD_LOCK  := $(ROOT)/.trinity/build/dev.lock
 
 .PHONY: warnings
-warnings:
+warnings: hosting-card
 	@start=$$(date +%s); \
 	clean=""; \
 	if [ ! -d "$(WARN_FULL_CACHE)/obj" ] || [ ! -f "$(WARN_FULL_CACHE)/master.priors" ]; then \
@@ -642,7 +645,7 @@ warnings:
 	echo "[warnings] full count took $$(($$(date +%s) - start))s"; \
 	exit $$status
 
-release:
+release: hosting-card
 	@: "The mid-flight check belongs HERE, not only in relaunch. Measured on"; \
 	: "2026-08-22: a release build ran while a worker was mid-flight, the"; \
 	: "build replaced the bundle under the running app, the app died at"; \
@@ -732,6 +735,133 @@ chain:
 	fi
 
 build: dev
+
+# --- The hosting card: a .t27 card in Swift, through C ----------------------
+#
+# ONLY T27. Owner, 2026-10-11 (translated): "write it in .t27 right away, build
+# the bridge in .t27 right away". Every rule of the Hosting section - the agent
+# the app installs and its digest, the URLs it may fetch, the agent's life, how
+# its lines are read, how the ledger is tallied, the statement verdict, the
+# disclaimer - is gHashTag/t27 specs/hosting/panel.t27 (t27#8975). Swift keeps
+# the views, the child process, the HTTP reads and calls into this card.
+#
+# THE BRIDGE. t27c has no Swift generator (t27#8976). So this target runs
+# `t27c gen-c` on the card, runs the card's own tests in the generated C
+# (-DT27_TEST_MAIN, which prints "All N tests passed."), and archives the C
+# into libT27HostingPanel.a. The module's header, hosting_panel.h, is the same
+# generated file cut at gen-c's "Function implementations" banner: constants
+# and prototypes, no body. (Importing the whole .c as the header was tried and
+# is wrong: with -O, swiftc emits the bodies of the C functions it calls, and
+# the link then finds each of them twice.) bridge/T27HostingPanel/
+# module.modulemap names that header; build.sh adds -I for the map and -L for
+# the library, and Swift says `import T27HostingPanel`.
+#
+# GENERATED, NOT COMMITTED. The C and the library are build products under
+# .trinity/build/ (ignored). What is committed is the card and the specs it
+# imports, byte-identical to gHashTag/t27, under specs/ - t27c resolves a `use`
+# against the nearest specs/ directory above the card - with their SHA-256 in
+# specs/hosting/SHA256SUMS. A vendored file that is not its pinned bytes stops
+# the build here, before anything is generated from it. Source: gHashTag/t27
+# master after t27#8977 and t27#8989 (panel.t27 blob c84df893); the five other
+# files are master's, and the four hosting ones equal agent-server/specs/hosting.
+#
+# t27c is found the way t27-rings finds it, with T27C_BIN first:
+#   make T27C_BIN=/path/to/t27c
+HOSTING_CARD_SPEC := $(ROOT)/specs/hosting/panel.t27
+HOSTING_CARD_SUMS := $(ROOT)/specs/hosting/SHA256SUMS
+HOSTING_CARD_DIR  := $(ROOT)/.trinity/build/t27/T27HostingPanel
+HOSTING_CARD_MAP  := $(ROOT)/bridge/T27HostingPanel
+T27C_BIN ?=
+
+hosting-card:
+	@T27C_USE=""; \
+	if [ -n "$(T27C_BIN)" ]; then \
+		T27C_USE="$(T27C_BIN)"; \
+	elif [ -x "$(T27C)" ]; then \
+		T27C_USE="$(T27C)"; \
+	elif [ -x "$(HOME)/t27/target/release/t27c" ]; then \
+		T27C_USE="$(HOME)/t27/target/release/t27c"; \
+	elif [ -f "$(T27_ROOT)/bootstrap/Cargo.toml" ]; then \
+		echo "[hosting-card] no t27c binary yet; building it from $(T27_ROOT)/bootstrap"; \
+		echo "               (products go to .trinity/t27c-build, never into that checkout)"; \
+		CARGO_TARGET_DIR="$(ROOT)/.trinity/t27c-build" cargo build --release \
+			--manifest-path "$(T27_ROOT)/bootstrap/Cargo.toml" > /tmp/t27c_build.log 2>&1 \
+			|| { echo "[FAIL] hosting-card: t27c did not build:"; tail -5 /tmp/t27c_build.log; exit 1; }; \
+		T27C_USE="$(T27C)"; \
+	else \
+		echo "[FAIL] hosting-card: no t27c. Set T27C_BIN=/path/to/t27c, or T27_ROOT to a"; \
+		echo "       gHashTag/t27 checkout to build one. The app's hosting rules are a"; \
+		echo "       .t27 card, and without t27c there is nothing for Swift to import."; \
+		exit 1; \
+	fi; \
+	test -x "$$T27C_USE" || { echo "[FAIL] hosting-card: $$T27C_USE is not executable"; exit 1; }; \
+	( cd "$(ROOT)/specs" && shasum -a 256 -c "$(HOSTING_CARD_SUMS)" > /dev/null ) || { \
+		echo "[FAIL] hosting-card: a vendored spec is not its pinned bytes:"; \
+		( cd "$(ROOT)/specs" && shasum -a 256 -c "$(HOSTING_CARD_SUMS)" 2>&1 | grep -v ': OK$$' | sed 's/^/       /' ); \
+		exit 1; \
+	}; \
+	mkdir -p "$(HOSTING_CARD_DIR)" || exit 1; \
+	tmp="$(HOSTING_CARD_DIR)/hosting_panel.c.$$$$"; \
+	"$$T27C_USE" gen-c "$(HOSTING_CARD_SPEC)" > "$$tmp" 2> "$$tmp.err" || { \
+		echo "[FAIL] hosting-card: t27c gen-c refused the card:"; sed 's/^/       /' "$$tmp.err"; \
+		rm -f "$$tmp" "$$tmp.err"; exit 1; \
+	}; \
+	if [ -s "$$tmp.err" ]; then \
+		echo "[FAIL] hosting-card: t27c gen-c warned; a warning here is a use it could not resolve:"; \
+		sed 's/^/       /' "$$tmp.err"; rm -f "$$tmp" "$$tmp.err"; exit 1; \
+	fi; \
+	rm -f "$$tmp.err"; \
+	if cmp -s "$$tmp" "$(HOSTING_CARD_DIR)/hosting_panel.c" \
+	   && [ -f "$(HOSTING_CARD_DIR)/hosting_panel.h" ] \
+	   && [ -f "$(HOSTING_CARD_DIR)/libT27HostingPanel.a" ]; then \
+		rm -f "$$tmp"; \
+		echo "[OK] hosting card unchanged: $(HOSTING_CARD_DIR)"; \
+		exit 0; \
+	fi; \
+	mv "$$tmp" "$(HOSTING_CARD_DIR)/hosting_panel.c" || exit 1; \
+	cd "$(HOSTING_CARD_DIR)" || exit 1; \
+	awk '/^   Function implementations$$/ { exit } { print }' hosting_panel.c | sed '$$d' > hosting_panel.h.new \
+		&& printf '#endif\n' >> hosting_panel.h.new || exit 1; \
+	if ! grep -q '^   Function prototypes$$' hosting_panel.h.new \
+	   || grep -q ') {$$' hosting_panel.h.new; then \
+		echo "[FAIL] hosting-card: gen-c's output no longer has the banners the header is cut at;"; \
+		echo "       the header would carry function bodies or no prototypes. Read hosting_panel.c."; \
+		rm -f hosting_panel.h.new hosting_panel.c; exit 1; \
+	fi; \
+	mv hosting_panel.h.new hosting_panel.h || exit 1; \
+	xcrun clang -std=c11 -w -DT27_TEST_MAIN hosting_panel.c -o card_tests \
+		|| { echo "[FAIL] hosting-card: the card's tests did not compile as C"; exit 1; }; \
+	out=$$(./card_tests 2>&1); code=$$?; rm -f card_tests; \
+	if [ $$code -ne 0 ] || ! printf '%s\n' "$$out" | grep -q '^All [0-9][0-9]* tests passed\.$$'; then \
+		echo "[FAIL] hosting-card: the card's tests failed in the generated C (exit $$code):"; \
+		printf '%s\n' "$$out" | tail -5 | sed 's/^/       /'; \
+		rm -f hosting_panel.c; exit 1; \
+	fi; \
+	xcrun clang -std=c11 -w -O2 -c hosting_panel.c -o hosting_panel.o \
+		|| { echo "[FAIL] hosting-card: the card did not compile as C"; rm -f hosting_panel.c; exit 1; }; \
+	rm -f libT27HostingPanel.a; \
+	xcrun ar rcs libT27HostingPanel.a hosting_panel.o \
+		|| { echo "[FAIL] hosting-card: ar did not archive the card"; exit 1; }; \
+	rm -f hosting_panel.o; \
+	echo "[OK] hosting card built with $$T27C_USE: $$out"
+
+# The Swift side of the card: tests/swift/hosting_panel_test.swift compiled
+# with the glue it tests and the card, then run. The test reads fixtures of the
+# agent's lines and the Queen's JSON, and drives a stand-in child process
+# (/bin/sh printing the agent's lines) through start, lines, SIGTERM and exit.
+HOSTING_TEST_BIN := $(ROOT)/.trinity/build/t27/hosting_panel_test
+
+hosting-test: hosting-card
+	@xcrun swiftc -O \
+		-I "$(HOSTING_CARD_MAP)" -L "$(HOSTING_CARD_DIR)" \
+		-Xcc -Wno-duplicate-decl-specifier -Xcc -Wno-parentheses-equality \
+		-Xcc -Wno-implicitly-unsigned-literal -Xcc -Wno-unused-variable \
+		"$(ROOT)/BR-OUTPUT/HostingAgentProcess.swift" \
+		"$(ROOT)/BR-OUTPUT/HostingPanelModel.swift" \
+		"$(ROOT)/tests/swift/hosting_panel_test.swift" \
+		-o "$(HOSTING_TEST_BIN)" \
+		|| { echo "[FAIL] hosting-test did not compile"; exit 1; }
+	@"$(HOSTING_TEST_BIN)"; code=$$?; rm -f "$(HOSTING_TEST_BIN)"; exit $$code
 
 # --- Verifying ----------------------------------------------------------
 
@@ -889,6 +1019,7 @@ MAKE_DOLLAR_VARS := ROOT DEV_APP RELEASE_APP DEV_BIN RELEASE_BIN DEV_PROC \
 	LOG_VARIANT \
 	MSG ISSUE WORKER TASK PATHS CRITERIA SECOND REVIEW AUTONOMY CASSETTE \
 	SECOND_TURN QUEEN_COMMAND MUTANTS MUTANTS_LOGIC MUTANTS_GUARD MAKE_DOLLAR_VARS HARNESS_LOCK HARNESS_LOCK_WAIT GUARDS \
+	T27C_BIN HOSTING_CARD_SPEC HOSTING_CARD_SUMS HOSTING_CARD_DIR HOSTING_CARD_MAP HOSTING_TEST_BIN \
 	TYPE_STATE VARIANT_FENCE_SRC VARIANT_FENCE_DIR \
 	VENDOR_SRC VENDOR_BEGIN VENDOR_END VENDOR_ANCHOR VENDOR_HALVES \
 	SOURCES_MANIFEST SOURCES_APP_ONLY SOURCES_TEST_ONLY \
@@ -2182,7 +2313,7 @@ cassette-isolation:
 # depend on them, so a failure in either would be reported as a cassette
 # failure - the wrong name for the wrong layer.
 .PHONY: test-app
-test-app:
+test-app: hosting-card
 	@TRIOS_VARIANT=test TRIOS_SKIP_SWIFT_TEST=1 TRIOS_SKIP_CHAT_E2E=1 \
 		"$(ROOT)/build.sh" > /tmp/trios_test_app_build.log 2>&1 || { \
 			echo "[FAIL] the harness bundle did not build"; \

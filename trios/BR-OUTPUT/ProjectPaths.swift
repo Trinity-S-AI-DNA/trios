@@ -254,4 +254,15 @@ enum ProjectPaths {
             : "\(trinityRun)/trios_singleton.pid"
     }
     static var bundleIdentifier: String { variant.bundleIdentifier }
+
+    // MARK: - Hosting (gHashTag/trios#1756)
+
+    /// Where the app keeps the trios-host agent it fetched and checked against the hosting card's
+    /// pin (gHashTag/t27 specs/hosting/panel.t27 agent_kept): one directory per release tag, in the
+    /// variant's data directory, so the dev app never runs the release app's agent.
+    static var hostingAgentDir: String { "\(trinity)/hosting" }
+
+    static func hostingAgentBinary(tag: String) -> String {
+        "\(hostingAgentDir)/\(tag)/trios-host"
+    }
 }
