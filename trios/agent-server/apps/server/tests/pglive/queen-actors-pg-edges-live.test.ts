@@ -466,4 +466,34 @@ describe('PgLink at its edges, against PostgreSQL', () => {
     expect(released).toBe(1)
     expect(p.waitingCount).toBe(0)
   }, 60_000)
+
+  // A beat thread terminated while its modules were still being transpiled
+  // crashed Bun 1.3.6 and 1.3.11 outright, after every test of this file had
+  // passed (gHashTag/trios#1813). Each start here is stopped at once, inside
+  // that window; every terminate must come after the thread said it loaded.
+  it('a node stopped as soon as it starts ends its beat thread only once the thread has loaded', async () => {
+    if (!scratch) return expect(offlineRequested()).toBe(true)
+    const Real = globalThis.Worker
+    const ends: boolean[] = []
+    class Watched extends Real {
+      private loaded = false
+      constructor(...args: ConstructorParameters<typeof Worker>) {
+        super(...args)
+        this.addEventListener('message', (event: MessageEvent) => {
+          if ((event.data as { loaded?: boolean }).loaded) this.loaded = true
+        })
+      }
+      override terminate(): void {
+        ends.push(this.loaded)
+        super.terminate()
+      }
+    }
+    globalThis.Worker = Watched
+    restore.push(() => {
+      globalThis.Worker = Real
+    })
+    const p = pool()
+    for (let i = 0; i < 20; i++) await (await link(p, 19)).stop()
+    expect(ends).toEqual(Array(20).fill(true))
+  }, 60_000)
 })
