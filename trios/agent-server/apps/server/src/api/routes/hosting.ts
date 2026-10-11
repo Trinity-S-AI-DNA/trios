@@ -20,6 +20,11 @@
  *                                   with their RFC 6962 paths (statement.t27)
  *   GET  /hosting/verdicts          agreed shards in the t27b lab's row shape
  *   GET  /hosting/jobs/:id          one job, its leases and its verdict
+ *   GET  /hosting/corpus            slice 2a: the feed, and every fed commit
+ *   GET  /hosting/corpus/:sha       slice 2a: that commit's corpus receipt, each
+ *                                   half with its provenance (feed.t27)
+ *   GET  /hosting/corpus/:sha/lab   slice 2a: that receipt against the t27b
+ *                                   lab's run of the same commit
  *
  * WHY NO TRUSTED-ORIGIN GUARD: a host is a process on someone's computer, with
  * no browser Origin. Every write is refused unless it verifies under the
@@ -33,6 +38,9 @@
  * statement.t27 LEDGER_KEY_VARIABLE (TRIOS_HOSTING_LEDGER_KEY) holds the
  * Queen's Ed25519 ledger seed, 64 hex characters. Without it every epoch stays
  * open and unsigned, and one log line says so. Its value is never printed.
+ * Slice 2a (trios#1867): TRIOS_HOSTING_FEED=on lets the Queen feed the network
+ * itself (hosting-feed.ts, specs/hosting/feed.t27); off, /hosting/corpus
+ * answers 503 `feed_off` and nothing polls GitHub.
  */
 
 import { Hono } from 'hono'
@@ -41,6 +49,12 @@ import { createQueenPool } from '../../lib/db/queen-pool'
 import { logger } from '../../lib/logger'
 import { epochsClose, ledgerKeyState } from '../services/hosting-cards'
 import {
+  createHostingFeed,
+  githubFeedSource,
+  type HostingFeed,
+  hostingFeedOn,
+} from '../services/hosting-feed'
+import {
   createHostingQueen,
   type HostingEconomics,
   HostingError,
@@ -48,8 +62,13 @@ import {
   LEDGER_KEY_WORDS,
   parseAllowlist,
 } from '../services/hosting-queen'
-import { createPgHostingStore, hostingOn } from '../services/hosting-store'
+import {
+  createPgHostingStore,
+  type HostingStore,
+  hostingOn,
+} from '../services/hosting-store'
 import { privatePemOfSeed, sha256Hex } from '../services/hosting-wire'
+import { FEED_POLL_SECONDS } from '../services/queen-hosting-feed-card.gen'
 import {
   ORIGIN_V4_PREFIX_BITS,
   ORIGIN_V6_PREFIX_BITS,
@@ -60,6 +79,8 @@ import { queenLeaseDatabaseUrl } from '../services/queen-lease'
 export interface HostingRouteDeps {
   enabled?: () => boolean
   queen?: () => HostingQueen | null
+  /** Slice 2a: the feed, or null when TRIOS_HOSTING_FEED is not on. */
+  feed?: () => HostingFeed | null
 }
 
 export function hostingEnabled(env = process.env): boolean {
@@ -100,15 +121,18 @@ export function hostingEconomicsOf(
 }
 
 let sharedPool: Pool | null = null
+let sharedStore: HostingStore | null = null
 let sharedQueen: HostingQueen | null = null
+let sharedFeed: HostingFeed | null = null
 
 function defaultQueen(): HostingQueen | null {
   if (sharedQueen) return sharedQueen
   const url = queenLeaseDatabaseUrl()
   if (!url) return null
   sharedPool ??= createQueenPool(url)
+  sharedStore ??= createPgHostingStore(sharedPool)
   sharedQueen = createHostingQueen({
-    store: createPgHostingStore(sharedPool),
+    store: sharedStore,
     now: Date.now,
     allowlist: parseAllowlist(process.env.TRIOS_HOSTING_ALLOWLIST),
     economics: hostingEconomicsOf(),
@@ -124,6 +148,42 @@ function defaultQueen(): HostingQueen | null {
  */
 export function hostingQueen(): HostingQueen | null {
   return defaultQueen()
+}
+
+/** The process's one feed, over the hosting Queen's store; null unless both flags are on. */
+function defaultFeed(): HostingFeed | null {
+  if (sharedFeed) return sharedFeed
+  if (!hostingOn() || !hostingFeedOn()) return null
+  const queen = defaultQueen()
+  if (!queen || !sharedStore) return null
+  sharedFeed = createHostingFeed({
+    store: sharedStore,
+    queen,
+    source: githubFeedSource({ lab: process.env.TRIOS_HOSTING_FEED_LAB }),
+    now: Date.now,
+    log: (line) => logger.info(line),
+  })
+  return sharedFeed
+}
+
+/**
+ * Start the feed's loop (slice 2a): one tick now and one every
+ * FEED_POLL_SECONDS (feed.t27). Off unless TRIOS_HOSTING=on and
+ * TRIOS_HOSTING_FEED=on; returns the stop, or null when it did not start.
+ */
+export function startHostingFeed(): (() => void) | null {
+  const feed = defaultFeed()
+  if (!feed) return null
+  const step = () =>
+    feed.tick().catch((error) =>
+      logger.warn('hosting feed tick failed', {
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    )
+  logger.info('hosting feed starting', { everySeconds: FEED_POLL_SECONDS })
+  void step()
+  const timer = setInterval(step, FEED_POLL_SECONDS * 1000)
+  return () => clearInterval(timer)
 }
 
 /**
@@ -157,6 +217,19 @@ export function originOf(forwarded: string | undefined): string {
 export function createHostingRoute(deps: HostingRouteDeps = {}) {
   const enabled = deps.enabled ?? (() => hostingEnabled())
   const queenOf = deps.queen ?? defaultQueen
+  const feedOf = deps.feed ?? defaultFeed
+
+  /** Slice 2a's reads: 503 with hosting off or the feed off, 404 for a commit never fed. */
+  const read = async (
+    c: { json: (body: unknown, status?: number) => Response },
+    fn: (feed: HostingFeed) => Promise<unknown>,
+  ) => {
+    if (!enabled()) return c.json({ error: 'hosting_off' }, 503)
+    const feed = feedOf()
+    if (!feed) return c.json({ error: 'feed_off' }, 503)
+    const out = await fn(feed)
+    return out === null ? c.json({ error: 'not_fed' }, 404) : c.json(out)
+  }
 
   const run = async (
     c: {
@@ -232,4 +305,9 @@ export function createHostingRoute(deps: HostingRouteDeps = {}) {
       run(c, (q) => q.verdicts(c.req.query('commit') || undefined)),
     )
     .get('/jobs/:id', (c) => run(c, (q) => q.job(c.req.param('id'))))
+    .get('/corpus', (c) => read(c, (f) => f.status()))
+    .get('/corpus/:sha', (c) => read(c, (f) => f.receipt(c.req.param('sha'))))
+    .get('/corpus/:sha/lab', (c) =>
+      read(c, (f) => f.againstLab(c.req.param('sha'))),
+    )
 }

@@ -112,6 +112,15 @@ for one key's leaves and their paths. `trios-host statement` checks your own lea
 - **Sybil rules:** `TRIOS_HOSTING_SYBIL=on` turns them on.
   `TRIOS_HOSTING_ATTESTED=<host id>,...` lists the keys you attest (the
   higher cap).
+- **The feed (slice 2a):** `TRIOS_HOSTING_FEED=on` lets the Queen feed t27
+  master to the hosts itself (`specs/hosting/feed.t27`). It submits shards
+  only for specs whose `use` closure changed, plus a 1-in-128 audit sample,
+  carries every other row, and serves the receipt at
+  `GET /hosting/corpus/<sha>`, with the comparison against the lab at
+  `GET /hosting/corpus/<sha>/lab`. The hosts run the toolchain of
+  `toolchain.t27` `T27_COMMIT`, so a commit with another t27c or t27b is
+  `not_comparable` with the lab. `TRIOS_GITHUB_API_TOKEN`, a read-only token,
+  is used when it is set; `TRIOS_HOSTING_FEED_LAB` names another lab.
 - **Allowlist:** `TRIOS_HOSTING_ALLOWLIST=<host id>=owner,<host id>=trusted`
   names your own machines and the people you trust. Every other key is public,
   and a public host only ever receives shards that declare no secret and no

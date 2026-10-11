@@ -12,6 +12,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { EXIT_CODES } from '@browseros/shared/constants/exit-codes'
 import { markBrowserlessByConfiguration } from './agent/browserless'
+import { startHostingFeed } from './api/routes/hosting'
 import { createHttpServer } from './api/server'
 import {
   configureVmRuntime,
@@ -94,6 +95,9 @@ export class Application {
     // After migrations: the tick's first act is a lease query against a table
     // the migration above creates.
     startQueenTick()
+    // Self-hosting slice 2a (gHashTag/trios#1867): the Queen feeds t27 master
+    // to the hosts itself. Off unless TRIOS_HOSTING=on and TRIOS_HOSTING_FEED=on.
+    startHostingFeed()
     // A container that takes bees the Queen ordered. Off unless asked; a
     // deployment may be a Queen, a runner, or both.
     startBeeRunner()
