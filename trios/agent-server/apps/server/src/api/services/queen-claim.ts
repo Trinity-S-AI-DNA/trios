@@ -65,6 +65,12 @@ export interface ClaimLease {
   criteria?: number
   freeAttempts?: number
   reviewerMisses?: number
+  /**
+   * TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (holds.t27 send_back_claim, t27#9111). It
+   * is read by stateOfDispatch before the card is asked, never by the card;
+   * the environment's reading is used when it is not given.
+   */
+  releaseDeadClaims?: boolean
 }
 
 /**

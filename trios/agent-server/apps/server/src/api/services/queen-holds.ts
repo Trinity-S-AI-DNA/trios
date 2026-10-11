@@ -29,6 +29,8 @@
 
 import { flag, loadCardWasm, u32 } from './queen-card-wasm'
 import {
+  CL_FREE,
+  CL_LIVE,
   HP_CURRENT,
   HP_STORED,
   HS_AWAITING,
@@ -61,6 +63,55 @@ export const heldPart = (stored: string, current: string): number => {
   const card = loadCardWasm(HOLDS_CARD)
   const [s, c] = card.put(stored, current)
   return card.call('held_part', s.at, s.len, c.at, c.len)
+}
+
+/**
+ * A CLAIM ON THE ISSUE FOLLOWS THE WORK AS IT STANDS NOW (holds.t27,
+ * t27#9111). Measured 2026-10-11: a send-back claims its issue for "the same
+ * bee", which never comes back once its turn has ended (a runner deletes the
+ * session at turn end), so 8 of 89 claims at 12:55Z waited out an idle hour
+ * for nothing; and an accept whose pull request was closed unmerged claims its
+ * issue as done for the whole 7-day window (#4374, #6414 at 12:47Z).
+ *
+ * CL_FREE, CL_LIVE or CL_DONE for a send-back with `sendBacks` counted.
+ */
+export const sendBackClaim = (sendBacks: number, ceiling: number): number =>
+  loadCardWasm(HOLDS_CARD).call('send_back_claim', u32(sendBacks), u32(ceiling))
+/** CL_FREE only when the branch's pull requests were read and all closed unmerged. */
+export const acceptClaim = (
+  read: boolean,
+  open: number,
+  merged: number,
+  closedUnmerged: number,
+): number =>
+  loadCardWasm(HOLDS_CARD).call(
+    'accept_claim',
+    flag(read),
+    u32(open),
+    u32(merged),
+    u32(closedUnmerged),
+  )
+/** The stage a row holds files at once its claim is known: a freed one holds none. */
+export const heldStage = (claim: number, stage: number): number =>
+  loadCardWasm(HOLDS_CARD).call('held_stage', claim, stage)
+
+/** TRIOS_QUEEN_RELEASE_DEAD_CLAIMS=on: send_back_claim and held_stage decide. Off by default. */
+export const releaseDeadClaimsEnabled = (
+  env: Record<string, string | undefined> = process.env,
+): boolean => (env.TRIOS_QUEEN_RELEASE_DEAD_CLAIMS ?? '').trim() === 'on'
+
+/** TRIOS_QUEEN_FREE_CLOSED_PR=on: accept_claim decides on the CI take-back's read. Off by default. */
+export const freeClosedPrEnabled = (
+  env: Record<string, string | undefined> = process.env,
+): boolean => (env.TRIOS_QUEEN_FREE_CLOSED_PR ?? '').trim() === 'on'
+
+/**
+ * The claim a row's state puts on its issue, in the card's words: the states
+ * QueenDelegationPolicy.claimOnIssue reads as free are `failed` and
+ * `cancelled`; live and done both keep the row's stage for its files.
+ */
+export function claimOfState(state: string): number {
+  return state === 'failed' || state === 'cancelled' ? CL_FREE : CL_LIVE
 }
 
 /**
@@ -101,12 +152,15 @@ export function holdStage(finished: boolean, reviewState: unknown): number {
  * when the bee stops - never the verdict's time, which a wait re-writes every
  * round. With its issue read this tick, a stored path holds only where the
  * current Boundary still names it (held_part); a path the Boundary added holds
- * nothing.
+ * nothing. With `claim` given (TRIOS_QUEEN_RELEASE_DEAD_CLAIMS), a row whose
+ * claim is free holds no files (held_stage): its next attempt is its own
+ * issue's, and a hold against it shut that issue out by its own row.
  */
 export function heldPaths(
   row: { finished_at?: unknown; review_state?: unknown; owned_paths?: unknown },
   now: number = Date.now(),
   issue: IssueNow = ISSUE_UNREAD,
+  claim?: number,
 ): string[] {
   const owned = Array.isArray(row.owned_paths)
     ? (row.owned_paths as unknown[]).filter(
@@ -120,7 +174,14 @@ export function heldPaths(
         (now - new Date(row.finished_at as string | Date).getTime()) / 60_000,
       )
     : 0
-  if (!holdsFilesNow(issue, holdStage(finished, row.review_state), minutes))
+  const stage = holdStage(finished, row.review_state)
+  if (
+    !holdsFilesNow(
+      issue,
+      claim === undefined ? stage : heldStage(claim, stage),
+      minutes,
+    )
+  )
     return []
   if (!issue.known) return owned
   const held: string[] = []

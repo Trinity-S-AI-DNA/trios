@@ -3481,6 +3481,7 @@ export async function prepareWorktree(
     running?: () => Promise<ReadonlySet<string> | null>
   } = {},
 ): Promise<{ ok: boolean; path: string; detail: string }> {
+  const asked = Date.now()
   const measure = deps.volumeUsed ?? volumeUsedPercent
   const root = workspaceRoot()
   const branch = `queen-${issue}`
@@ -3531,6 +3532,21 @@ export async function prepareWorktree(
     }
   }
 
+  return oneCutAtATime(root, () =>
+    cutWorktree(issue, root, branch, path, measure, deps, asked),
+  )
+}
+
+/** The cut of a fresh worktree, run one at a time per checkout (below). */
+async function cutWorktree(
+  issue: number,
+  root: string,
+  branch: string,
+  path: string,
+  measure: (dir: string) => number | null,
+  deps: { running?: () => Promise<ReadonlySet<string> | null> },
+  asked: number,
+): Promise<{ ok: boolean; path: string; detail: string }> {
   // A DIRECTORY CAN EXIST WHILE GIT DOES NOT LIST IT, and the reuse branch
   // above cannot see that because it asks git rather than the disk.
   //
@@ -3626,12 +3642,7 @@ export async function prepareWorktree(
     }
   }
 
-  const fetched = await run(
-    'git',
-    ['fetch', '--quiet', 'origin'],
-    root,
-    180_000,
-  )
+  const fetched = await fetchForCut(root, asked)
   if (fetched.code !== 0) {
     return {
       ok: false,
@@ -3660,6 +3671,65 @@ export async function prepareWorktree(
   }
   const farmed = await farmNodeModules(path, root)
   return { ok: true, path, detail: `${start.detail}${farmed}` }
+}
+
+/**
+ * ONE CUT AT A TIME IN ONE CHECKOUT.
+ *
+ * Every step of cutWorktree writes the checkout's shared `.git`: the prune,
+ * the fetch that moves every remote-tracking ref, the new branch and its
+ * worktree. A runner claims every order it has a free slot for in the same
+ * moment, and the cuts ran side by side. Measured 2026-10-11 12:58:39Z on trios-bee-runner-1:
+ * eleven orders claimed in one millisecond, ONE started (#8408); the other ten
+ * fetched at once, failed with
+ *
+ *   error: cannot lock ref 'refs/remotes/origin/...': is at X but expected Y
+ *
+ * and were refused, which ends an order and hands its issue back, so the next
+ * round queued the same issues again (#8396 six times in three minutes; the
+ * batch was rolled back at 13:06:50Z). On a scratch repository: one fetch at a
+ * time, 0 of 5 failed; two at once, 5 of 10; eleven at once, 55 of 55.
+ *
+ * So the cuts of one checkout queue behind each other, in the order they
+ * asked. Per process, which is per checkout: each runner replica has its own
+ * volume.
+ */
+const cutQueues = new Map<string, Promise<unknown>>()
+
+function oneCutAtATime<T>(root: string, cut: () => Promise<T>): Promise<T> {
+  const ahead = cutQueues.get(root) ?? Promise.resolve()
+  const mine = ahead.then(cut, cut)
+  cutQueues.set(
+    root,
+    mine.catch(() => undefined),
+  )
+  return mine
+}
+
+/**
+ * ONE FETCH SERVES A BURST. Queued one behind another, eleven cuts would make
+ * eleven fetches of a repository with thousands of branches, and the last bee
+ * would start minutes late. A fetch that STARTED after a cut was asked for
+ * already brought everything that cut could want, so it is not repeated; one
+ * that started before the ask is, so a late cut never stands on an old base.
+ */
+const fetchedFrom = new Map<string, number>()
+
+async function fetchForCut(
+  root: string,
+  asked: number,
+): Promise<{ code: number; out: string }> {
+  const last = fetchedFrom.get(root)
+  if (last !== undefined && last >= asked) return { code: 0, out: '' }
+  const startedAt = Date.now()
+  const fetched = await run(
+    'git',
+    ['fetch', '--quiet', 'origin'],
+    root,
+    180_000,
+  )
+  if (fetched.code === 0) fetchedFrom.set(root, startedAt)
+  return fetched
 }
 
 /**
@@ -5212,6 +5282,13 @@ export async function runClaimedBee(
 ): Promise<DispatchOutcome> {
   const { issue, branch, ownedPaths } = order
   const refuse = async (detail: string): Promise<DispatchOutcome> => {
+    // SAID WHERE IT HAPPENS. The refusal reached only the row, which the next
+    // round's re-dispatch overwrites within a minute, so ten orders a burst
+    // were given back on 2026-10-11 with nothing in any log to say why.
+    logger.warn('Runner gave back an order it claimed', {
+      issue,
+      detail: detail.slice(0, 300),
+    })
     await recordDispatch(pool, issue, branch, false, detail, ownedPaths)
     return { started: false, issue, branch, detail }
   }

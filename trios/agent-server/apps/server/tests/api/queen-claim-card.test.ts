@@ -295,7 +295,10 @@ const cardAnswers = (() => {
   const out = new Uint8Array(GRID_SIZE)
   let i = 0
   for (const [word, lease] of finishedGrid())
-    out[i++] = CLAIM_CODE[stateOfDispatch(true, word, lease)]
+    out[i++] =
+      CLAIM_CODE[
+        stateOfDispatch(true, word, { ...lease, releaseDeadClaims: false })
+      ]
   return out
 })()
 
@@ -469,6 +472,111 @@ describe('the card answers what the hand-written rule answered', () => {
         },
       )
       expect(dispatchRowState(row, now)).toBe(want)
+    }
+  })
+})
+
+// The one check in front of the card: TRIOS_QUEEN_RELEASE_DEAD_CLAIMS
+// (holds.t27 send_back_claim, #1893). It frees a send-back under the ceiling
+// at once and asks nothing else. With the flag on, every row of the grid must
+// still answer what the hand-written rule answered, except exactly the finished
+// send-backs under their ceiling, which are `failed` whatever their clock.
+describe('the dead-claims check in front of the card', () => {
+  const ceilingOf = (l: Lease) => l.ceiling ?? 2
+  const under = (word: unknown, l: Lease) =>
+    String(word ?? '') === 'sendBack' && (l.sendBacks ?? 0) < ceilingOf(l)
+
+  it('with the flag on, changes exactly the send-backs under the ceiling', () => {
+    const diverged: string[] = []
+    let freed = 0
+    let i = 0
+    for (const [word, lease] of finishedGrid()) {
+      const want = under(word, lease)
+        ? 'failed'
+        : handWrittenStateOfDispatch(true, word, lease)
+      if (under(word, lease)) freed++
+      const got = stateOfDispatch(true, word, {
+        ...lease,
+        releaseDeadClaims: true,
+      })
+      if (got !== want && diverged.length < 3)
+        diverged.push(
+          `${JSON.stringify(word)} ${JSON.stringify(lease)}: ${got} not ${want}`,
+        )
+      i++
+    }
+    expect(i).toBe(GRID_SIZE)
+    expect(freed).toBeGreaterThan(0)
+    expect(diverged).toEqual([])
+  })
+
+  it('with the flag off, frees nothing the card did not free', () => {
+    expect(
+      stateOfDispatch(true, 'sendBack', {
+        idleMs: 0,
+        sendBacks: 0,
+        releaseDeadClaims: false,
+      }),
+    ).toBe('rejected')
+    expect(
+      stateOfDispatch(true, 'sendBack', {
+        idleMs: 60 * MINUTE,
+        sendBacks: 0,
+        releaseDeadClaims: false,
+      }),
+    ).toBe('failed')
+  })
+
+  it('frees a send-back at once, and only under the ceiling', () => {
+    const on = (sendBacks: number, ceiling?: number, idleMs = 0) =>
+      stateOfDispatch(true, 'sendBack', {
+        idleMs,
+        sendBacks,
+        ceiling,
+        releaseDeadClaims: true,
+      })
+    expect(on(0)).toBe('failed')
+    expect(on(1)).toBe('failed')
+    expect(on(2)).toBe('rejected')
+    expect(on(3)).toBe('rejected')
+    expect(on(2, 3)).toBe('failed')
+    expect(on(0, 0)).toBe('rejected')
+  })
+
+  it("asks only a finished send-back: a running bee still claims, other words are the card's", () => {
+    for (const word of WORDS) {
+      expect(
+        stateOfDispatch(false, word, { sendBacks: 0, releaseDeadClaims: true }),
+      ).toBe('running')
+      if (String(word ?? '') === 'sendBack') continue
+      expect(
+        stateOfDispatch(true, word, {
+          idleMs: 0,
+          sendBacks: 0,
+          releaseDeadClaims: true,
+        }),
+      ).toBe(
+        stateOfDispatch(true, word, {
+          idleMs: 0,
+          sendBacks: 0,
+          releaseDeadClaims: false,
+        }),
+      )
+    }
+  })
+
+  it('reads the environment when the caller names no flag', () => {
+    const was = process.env.TRIOS_QUEEN_RELEASE_DEAD_CLAIMS
+    try {
+      process.env.TRIOS_QUEEN_RELEASE_DEAD_CLAIMS = 'on'
+      expect(stateOfDispatch(true, 'sendBack', { sendBacks: 0 })).toBe('failed')
+      process.env.TRIOS_QUEEN_RELEASE_DEAD_CLAIMS = 'off'
+      expect(stateOfDispatch(true, 'sendBack', { sendBacks: 0 })).toBe(
+        'rejected',
+      )
+    } finally {
+      if (was === undefined) delete process.env.TRIOS_QUEEN_RELEASE_DEAD_CLAIMS
+      else process.env.TRIOS_QUEEN_RELEASE_DEAD_CLAIMS = was
     }
   })
 })

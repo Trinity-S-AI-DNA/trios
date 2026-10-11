@@ -55,6 +55,7 @@ import { type ClaimLease, claimOf, type DispatchClaim } from './queen-claim'
 import {
   FREE_ATTEMPT_CEILING as CLAIM_FREE_ATTEMPT_CEILING,
   REVIEWER_MISS_CEILING as CLAIM_REVIEWER_MISS_CEILING,
+  DEFAULT_SEND_BACK_CEILING,
   SEND_BACK_FLOOR_MINUTES,
   WAIT_FROZEN_FLOOR_MINUTES,
 } from './queen-claim-card.gen'
@@ -99,7 +100,14 @@ import {
 import { drainBoundedEnabled } from './queen-drain'
 import { pruneEvents, wakesHere } from './queen-events'
 import { ACTOR_STREAM } from './queen-events.gen'
-import { heldPaths, type IssueNow } from './queen-holds'
+import {
+  claimOfState,
+  heldPaths,
+  type IssueNow,
+  releaseDeadClaimsEnabled,
+  sendBackClaim,
+} from './queen-holds'
+import { CL_FREE } from './queen-holds.gen'
 import {
   advanceJobs,
   defaultJobIo,
@@ -802,10 +810,32 @@ export const CEILING_RELEASE_MS = CEILING_FLOOR_MINUTES * 60 * 1000
 export const MAX_CEILING_RELEASES = MAX_RELEASES
 
 /**
+ * holds.t27 send_back_claim behind TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (t27#9111):
+ * whether a send-back's issue is free at once. `flag` is the caller's reading
+ * of the flag, the environment's when it passes none.
+ */
+function nobodyComesBack(
+  flag: boolean | undefined,
+  sendBacks: number,
+  ceiling: number,
+): boolean {
+  if (!(flag ?? releaseDeadClaimsEnabled())) return false
+  return sendBackClaim(sendBacks, ceiling) === CL_FREE
+}
+
+/**
  * What a dispatch row claims, decided by the claim card (gHashTag/t27
  * specs/queen/claim.t27, gHashTag/trios#1767) as generated wasm; see
  * `queen-claim.ts`. The card imports the review valve's escalation_kind and
  * next_step, so the valve is still its one home.
+ *
+ * One check stays in front of the card, as it stood on `queen` when this card
+ * was merged in (#1893): a send-back that nobody comes back to, behind
+ * TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (off by default), frees its issue at once.
+ * It is asked only of a finished row whose verdict is `sendBack`, exactly where
+ * the hand-written rule asked it, before the send-back's own hour. With the
+ * flag off the card answers alone, as proven in
+ * tests/api/queen-claim-card.test.ts.
  *
  * The hand-written body this replaced, with every measurement its comments
  * recorded, is kept verbatim in tests/api/queen-claim-card.test.ts: the card
@@ -816,6 +846,16 @@ export function stateOfDispatch(
   reviewState: unknown,
   lease: ClaimLease = {},
 ): DispatchClaim {
+  if (
+    finished &&
+    String(reviewState ?? '') === 'sendBack' &&
+    nobodyComesBack(
+      lease.releaseDeadClaims,
+      lease.sendBacks ?? 0,
+      lease.ceiling ?? DEFAULT_SEND_BACK_CEILING,
+    )
+  )
+    return 'failed'
   return claimOf(finished, reviewState, lease)
 }
 /**
@@ -1894,7 +1934,7 @@ export async function runRound(
       !finished &&
       typeof row.key_index === 'number' &&
       isRunnerLane(row.key_index)
-    return boardTask(owner, repoName, {
+    const task = boardTask(owner, repoName, {
       conversationId: row.conversation_id,
       issue: row.issue,
       // holds.t27: finished work lets go of its files after a while, and an
@@ -1945,6 +1985,20 @@ export async function runRound(
       outputTokens:
         row.output_tokens == null ? undefined : Number(row.output_tokens),
     })
+    // A FREED CLAIM HOLDS NO FILES (holds.t27 held_stage, t27#9111, behind
+    // TRIOS_QUEEN_RELEASE_DEAD_CLAIMS). A send-back freed as `failed` kept its
+    // files for SEND_BACK_HOLD_MINUTES, so its own next attempt was refused as
+    // "held by" itself until they ran out. Off: the row is exactly as above.
+    if (!releaseDeadClaimsEnabled()) return task
+    return {
+      ...task,
+      ownedPaths: heldPaths(
+        row,
+        Date.now(),
+        issueNow(issuesNow, row.issue),
+        claimOfState(task.state),
+      ),
+    }
   })
 
   // CLOSED BY THE REVIEW VALVE IS NOT CHOSEN AGAIN. `cancelled` frees the
