@@ -54,6 +54,14 @@ export const A_WRONG_DOMAIN = 3 satisfies number;
 // t27c gen-ts: fn free_slots was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn offers_per_wake was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn fits was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn batch_quota was not emitted -- this backend lowers declarations, not bodies.
+export const BATCH_OWNER_ADMIT = 0 satisfies number;
+// t27c gen-ts: fn meets_pick was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn pick_admits was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn batch_lands was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn reference_wake_steps was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn wake_work_bound was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn serial_wake_steps was not emitted -- this backend lowers declarations, not bodies.
 export const DOMAINS = ["t27-c: the C and assembler backends", "t27-b: the native backend and the compiler", "specs: .t27 specifications, seals and their tests", "queen-ops: the supervisor, its reviewers and the board"] as const satisfies readonly [string, string, string, string];
 export const DOMAIN_COUNT = 4 satisfies number;
 export const DOMAIN_T27C = 0 satisfies number;
@@ -132,6 +140,11 @@ export const GITHUB_REQUEST_LIMIT_SECONDS = 10 satisfies number;
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -153,7 +166,7 @@ export const GITHUB_REQUEST_LIMIT_SECONDS = 10 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["EV_TASK_CREATED", "EV_TASK_ENDED", "EV_WORKER_IDLE", "EV_LEASE_EXPIRED", "EV_EVIDENCE", "EV_REVIEW", "EV_ASSIGN", "EV_CANCEL", "EV_HEARTBEAT", "EV_TICK", "EVENT_KINDS", "EVENT_NAMES", "R_NONE", "R_DISPATCH", "R_REVIEW", "R_RECLAIM", "R_ASSIGN", "R_CANCEL", "R_RECONCILE", "RECONCILE_SECONDS", "NO_HOLDER", "TASK_LEASE_TTL_SECONDS", "TASK_HEARTBEAT_SECONDS", "SRC_NONE", "SRC_MANUAL", "SRC_AUTO", "A_OK", "A_HELD", "A_AGENT_BUSY", "A_WRONG_DOMAIN", "DOMAINS", "DOMAIN_COUNT", "DOMAIN_T27C", "DOMAIN_T27B", "DOMAIN_SPECS", "DOMAIN_QUEEN_OPS", "AG_BOOT", "AG_IDLE", "AG_BUSY", "AG_COMPACT", "AG_RETIRED", "AG_ILLEGAL", "AE_READY", "AE_ASSIGN", "AE_TASK_DONE", "AE_INTERRUPT", "AE_COMPACTED", "AE_RETIRE", "P_REUSE", "P_CLONE", "P_WAIT", "ST_BASE", "ST_TIP", "ST_HOLD", "TIP_NONE", "TIP_UNJUDGED", "TIP_SENT_BACK", "TIP_ACCEPTED", "TIP_PR_CLOSED", "EFF_NONE", "EFF_INTENT", "EFF_DONE", "EK_MODEL_CALL", "EK_PUSH", "EK_PULL_REQUEST", "EK_COMMENT", "EK_RELEASE", "EFFECT_KINDS", "DO_RUN", "DO_SKIP", "DO_LOOK", "DO_NOTHING", "DO_GIVE_UP", "EFFECT_RUN_LIMIT", "GITHUB_REQUEST_LIMIT_SECONDS"] as const;
+export const __DECL_ORDER__ = ["EV_TASK_CREATED", "EV_TASK_ENDED", "EV_WORKER_IDLE", "EV_LEASE_EXPIRED", "EV_EVIDENCE", "EV_REVIEW", "EV_ASSIGN", "EV_CANCEL", "EV_HEARTBEAT", "EV_TICK", "EVENT_KINDS", "EVENT_NAMES", "R_NONE", "R_DISPATCH", "R_REVIEW", "R_RECLAIM", "R_ASSIGN", "R_CANCEL", "R_RECONCILE", "RECONCILE_SECONDS", "NO_HOLDER", "TASK_LEASE_TTL_SECONDS", "TASK_HEARTBEAT_SECONDS", "SRC_NONE", "SRC_MANUAL", "SRC_AUTO", "A_OK", "A_HELD", "A_AGENT_BUSY", "A_WRONG_DOMAIN", "BATCH_OWNER_ADMIT", "DOMAINS", "DOMAIN_COUNT", "DOMAIN_T27C", "DOMAIN_T27B", "DOMAIN_SPECS", "DOMAIN_QUEEN_OPS", "AG_BOOT", "AG_IDLE", "AG_BUSY", "AG_COMPACT", "AG_RETIRED", "AG_ILLEGAL", "AE_READY", "AE_ASSIGN", "AE_TASK_DONE", "AE_INTERRUPT", "AE_COMPACTED", "AE_RETIRE", "P_REUSE", "P_CLONE", "P_WAIT", "ST_BASE", "ST_TIP", "ST_HOLD", "TIP_NONE", "TIP_UNJUDGED", "TIP_SENT_BACK", "TIP_ACCEPTED", "TIP_PR_CLOSED", "EFF_NONE", "EFF_INTENT", "EFF_DONE", "EK_MODEL_CALL", "EK_PUSH", "EK_PULL_REQUEST", "EK_COMMENT", "EK_RELEASE", "EFFECT_KINDS", "DO_RUN", "DO_SKIP", "DO_LOOK", "DO_NOTHING", "DO_GIVE_UP", "EFFECT_RUN_LIMIT", "GITHUB_REQUEST_LIMIT_SECONDS"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

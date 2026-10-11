@@ -45,6 +45,7 @@ import { importRunnerBranch } from '../routes/queen-export'
 import { outstandingEscalations } from '../routes/queen-needs-you'
 import { actorEventsOn } from './queen-actor-events'
 import { advanceApp } from './queen-app'
+import { roundChooser } from './queen-batch-choose'
 import {
   dispatchByActors,
   handRoundToBeeActors,
@@ -98,7 +99,7 @@ import {
 import { drainBoundedEnabled } from './queen-drain'
 import { pruneEvents, wakesHere } from './queen-events'
 import { ACTOR_STREAM } from './queen-events.gen'
-import { heldPaths } from './queen-holds'
+import { heldPaths, type IssueNow } from './queen-holds'
 import {
   advanceJobs,
   defaultJobIo,
@@ -1526,6 +1527,35 @@ export async function runQueenTickOnce(
 }
 
 /**
+ * Each open issue's Boundary as written now, when the round read the open list
+ * whole; null when it did not, so nothing is claimed about any issue
+ * (holds.t27 holds_files_now, t27#9033). Parsed by the same twin of the Swift
+ * rule that `rememberIssues` stores, from the list the round already fetched:
+ * no extra GitHub call.
+ */
+export function boundariesNow(
+  open: ReadonlyArray<{ number: number; body: string }>,
+  complete: boolean,
+): Map<number, string[]> | null {
+  if (!complete) return null
+  return new Map(open.map((i) => [i.number, boundaryPathsOf(i.body)]))
+}
+
+/** What the round read of one dispatch's issue this tick, for heldPaths. */
+export function issueNow(
+  issuesNow: ReadonlyMap<number, string[]> | null,
+  issue: unknown,
+): IssueNow | undefined {
+  if (!issuesNow) return undefined
+  const n = Number(issue)
+  return {
+    known: true,
+    open: issuesNow.has(n),
+    boundary: issuesNow.get(n) ?? [],
+  }
+}
+
+/**
  * The work of a round, with the lease already in hand.
  *
  * EXPORTED FOR THE SUITE, and the reason is the defect it covers. Every write
@@ -1670,6 +1700,11 @@ export async function runRound(
   // it, and a variable scoped to the branch that fills it is a variable the
   // dispatch cannot see.
   let specVerdicts: Record<string, SpecVerdict> = {}
+  // Each open issue's Boundary as written now, when the list was read whole:
+  // a dispatch row holds its files against THIS, not against what its issue
+  // said when it was dispatched (holds.t27 holds_files_now, t27#9033). Null
+  // when nothing is known, and the stage alone decides, as before.
+  let issuesNow: Map<number, string[]> | null = null
   if (candidateOverride) {
     candidates = candidateOverride
     candidateBodies = await bodiesFor(repo, candidateOverride)
@@ -1697,6 +1732,7 @@ export async function runRound(
     // round, never inside it: a shape is a model call.
     startShaping(pool, open)
     candidates = open.map((i) => i.number)
+    issuesNow = boundariesNow(open, complete)
     candidateBodies = Object.fromEntries(
       open.map((i) => [String(i.number), i.body]),
     )
@@ -1863,7 +1899,7 @@ export async function runRound(
       issue: row.issue,
       // holds.t27: finished work lets go of its files after a while, and an
       // escalation at once; its issue stays claimed by its state, not its paths.
-      ownedPaths: heldPaths(row),
+      ownedPaths: heldPaths(row, Date.now(), issueNow(issuesNow, row.issue)),
       branch: row.branch,
       // A finished task's clock starts when it FINISHED, not when it was
       // dispatched: `stillHoldsBoundary` measures the wait for a verdict from
@@ -1943,9 +1979,25 @@ export async function runRound(
     candidateBodies,
     tasks: openingBoard,
   })
+  // TRIOS_QUEEN_DISPATCH_BATCH=on (t27#9021): one chooser call fills every
+  // free lane with edits that meet no other (queen-batch-choose.ts); off, the
+  // round asks queend again after every pick, as before.
+  const plan = await roundChooser(choice, {
+    candidates,
+    bodies: candidateBodies,
+    board: openingBoard,
+    repo,
+    ask: (tasks) =>
+      askQueend({ kind: 'choose', candidates, candidateBodies, tasks }),
+    onBatch: (b) =>
+      logger.info('Queen batch chose', {
+        picks: b.picks,
+        relaxed: b.relaxed.length,
+      }),
+  })
   lap('choose')
 
-  await recordTick(pool, holder, grant.fence, choice)
+  await recordTick(pool, holder, grant.fence, plan.decision)
   logger.info('Queen tick decided', {
     chosen: choice.chosen ?? null,
     refusal: choice.refusal ?? null,
@@ -1990,7 +2042,7 @@ export async function runRound(
     room?: { resource: 'memory' | 'disk'; summary: string }
   }> = []
   let board = [...registry.rows[0].tasks, ...containerTasks]
-  let current: QueendChoice | null = choice
+  let current: QueendChoice | null = plan.first
   // Only a bee that is still running is spending its key. A finished dispatch
   // waiting for a verdict holds its issue and its files; it is not making
   // requests, so withholding its key from the next bee would shrink the swarm
@@ -2125,12 +2177,7 @@ export async function runRound(
     // `queend` applies canStartAnother itself, so the loop ends when the policy
     // says so rather than on a count kept here - two places counting workers is
     // how they come to disagree.
-    current = await askQueend({
-      kind: 'choose',
-      candidates,
-      candidateBodies,
-      tasks: board,
-    })
+    current = await plan.next(board)
     // And again on the board that grew. This is the ONLY place the capacity
     // gate actually bites - the opening board is at the limit only when the
     // round has nothing to do anyway - so a cross-check that skipped it would

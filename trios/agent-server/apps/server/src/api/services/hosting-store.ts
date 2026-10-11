@@ -140,6 +140,61 @@ export interface StatementRow {
   closedAt: number
 }
 
+/**
+ * One half of one spec in a feed (gHashTag/t27 specs/hosting/feed.t27,
+ * slice 2a): why it was sharded or carried, its job, and its row keys once it
+ * has them. A part is content-addressed (hosting_feed_parts): most halves are
+ * carried unchanged from feed to feed, so a feed holds ids, not rows.
+ */
+export interface FeedHalf {
+  /** feed.t27 SHARD_*. */
+  reason: number
+  /** The shard job, when the half is sharded. */
+  job: string | null
+  /** The half's row keys (feed.t27 *_PART_KEYS), carried or agreed. */
+  part: string | null
+  /** An audited half: the part it carried, to set the hosts' answer against. */
+  carried?: string | null
+  /** Where the part was made: feed.t27 SOURCE_*, the commit it ran, and its job. */
+  from: { source: number; commit: string; job?: string } | null
+  /** feed.t27 HS_*. */
+  state: number
+  /** feed.t27 AU_* (AU_NONE unless audited). */
+  audit: number
+}
+
+export interface FeedSpec {
+  file: string
+  /** The spec's `use` closure at the commit: SHA-256 of `path blob` lines, sorted. */
+  input: string
+  halves: [FeedHalf, FeedHalf]
+}
+
+/** One fed commit, or the genesis receipt a toolchain's chain starts from. */
+export interface FeedRow {
+  /** The commit, or `lab:<pin>` for a chain's genesis. */
+  id: string
+  commit: string
+  /** The feed's round in its toolchain's chain (feed.t27 audit_pick). */
+  seq: number
+  /** The t27 commit the hosts' t27c and t27b were built from (toolchain.t27 T27_COMMIT). */
+  pin: string
+  /** feed.t27 FEED_*. */
+  state: number
+  startedAt: number
+  closedAt: number | null
+  /** The receipt this feed carried from. */
+  base: string | null
+  /** This commit's toolchain against the pin, per half (feed.t27 TC_*): comparability with the lab. */
+  toolchain: [number, number]
+  /** Halves whose carrying a poisoned audit in the base voided (feed.t27 voids_next). */
+  voided: [boolean, boolean]
+  specs: FeedSpec[]
+}
+
+/** A feed without its specs: what a listing shows. */
+export type FeedSummary = Omit<FeedRow, 'specs'> & { specCount: number }
+
 export interface HostingTx {
   host(id: string): Promise<HostRow | null>
   hosts(): Promise<HostRow[]>
@@ -163,6 +218,16 @@ export interface HostingTx {
   statements(): Promise<StatementRow[]>
   /** Write a statement once; false when that epoch already has one. */
   putStatement(row: StatementRow): Promise<boolean>
+  /** The jobs of these ids that exist (feed.t27: a feed reads its own jobs only). */
+  jobsByIds(ids: string[]): Promise<JobRow[]>
+  feed(id: string): Promise<FeedRow | null>
+  /** Every feed, newest first (a chain's genesis after the feed it was made for), without its specs. */
+  feeds(): Promise<FeedSummary[]>
+  putFeed(row: FeedRow): Promise<void>
+  /** The feed parts of these ids that exist. */
+  parts(ids: string[]): Promise<Map<string, Record<string, unknown>>>
+  /** Write content-addressed parts; an id already there is kept. */
+  putParts(parts: Map<string, Record<string, unknown>>): Promise<void>
 }
 
 export interface HostingStore {
@@ -178,6 +243,8 @@ export function createMemoryHostingStore(): HostingStore {
   const leases = new Map<string, LeaseRow>()
   const ledger: LedgerRow[] = []
   const statements = new Map<number, StatementRow>()
+  const feeds = new Map<string, FeedRow>()
+  const parts = new Map<string, Record<string, unknown>>()
   let tail: Promise<unknown> = Promise.resolve()
   const s: HostingTx = {
     host: async (id) =>
@@ -230,6 +297,34 @@ export function createMemoryHostingStore(): HostingStore {
       if (statements.has(row.epoch)) return false
       statements.set(row.epoch, clone(row))
       return true
+    },
+    jobsByIds: async (ids) =>
+      ids.flatMap((id) =>
+        jobs.has(id) ? [clone(jobs.get(id) as JobRow)] : [],
+      ),
+    feed: async (id) =>
+      feeds.has(id) ? clone(feeds.get(id) as FeedRow) : null,
+    feeds: async () =>
+      [...feeds.values()]
+        .sort((a, b) => b.startedAt - a.startedAt || b.seq - a.seq)
+        .map(({ specs, ...rest }) => ({
+          ...clone(rest),
+          specCount: specs.length,
+        })),
+    putFeed: async (row) => {
+      feeds.set(row.id, clone(row))
+    },
+    parts: async (ids) =>
+      new Map(
+        ids.flatMap((id) =>
+          parts.has(id)
+            ? [[id, clone(parts.get(id) as Record<string, unknown>)] as const]
+            : [],
+        ),
+      ),
+    putParts: async (more) => {
+      for (const [id, part] of more)
+        if (!parts.has(id)) parts.set(id, clone(part))
     },
   }
   return {
@@ -293,6 +388,15 @@ export const HOSTING_SQL = [
   '  epoch bigint PRIMARY KEY,',
   '  root text NOT NULL,',
   '  closed_at bigint NOT NULL,',
+  '  body jsonb NOT NULL',
+  ');',
+  'CREATE TABLE IF NOT EXISTS hosting_feeds (',
+  '  id text PRIMARY KEY,',
+  '  started_at bigint NOT NULL,',
+  '  body jsonb NOT NULL',
+  ');',
+  'CREATE TABLE IF NOT EXISTS hosting_feed_parts (',
+  '  id text PRIMARY KEY,',
   '  body jsonb NOT NULL',
   ');',
 ].join('\n')
@@ -490,6 +594,51 @@ function pgTx(c: PoolClient): HostingTx {
           [row.epoch, row.root, row.closedAt, JSON.stringify(row)],
         )
       ).rowCount ?? 0) > 0,
+    jobsByIds: (ids) =>
+      ids.length === 0
+        ? Promise.resolve([])
+        : bodies<JobRow>('SELECT body FROM hosting_jobs WHERE id = ANY($1)', [
+            ids,
+          ]),
+    feed: async (id) =>
+      (
+        await bodies<FeedRow>('SELECT body FROM hosting_feeds WHERE id = $1', [
+          id,
+        ])
+      )[0] ?? null,
+    feeds: async () =>
+      (
+        await c.query<{ body: FeedSummary }>(
+          "SELECT (body - 'specs') || jsonb_build_object('specCount', jsonb_array_length(body->'specs')) AS body " +
+            "FROM hosting_feeds ORDER BY started_at DESC, (body->>'seq')::int DESC",
+        )
+      ).rows.map((r) => r.body),
+    putFeed: async (row) => {
+      await c.query(
+        'INSERT INTO hosting_feeds (id, started_at, body) VALUES ($1, $2, $3) ' +
+          'ON CONFLICT (id) DO UPDATE SET body = $3',
+        [row.id, row.startedAt, JSON.stringify(row)],
+      )
+    },
+    parts: async (ids) =>
+      new Map(
+        ids.length === 0
+          ? []
+          : (
+              await c.query<{ id: string; body: Record<string, unknown> }>(
+                'SELECT id, body FROM hosting_feed_parts WHERE id = ANY($1)',
+                [ids],
+              )
+            ).rows.map((r) => [r.id, r.body] as const),
+      ),
+    putParts: async (more) => {
+      const ids = [...more.keys()]
+      if (ids.length === 0) return
+      await c.query(
+        'INSERT INTO hosting_feed_parts (id, body) SELECT * FROM unnest($1::text[], $2::jsonb[]) ON CONFLICT (id) DO NOTHING',
+        [ids, ids.map((id) => JSON.stringify(more.get(id)))],
+      )
+    },
   }
 }
 

@@ -13,6 +13,12 @@ const port = globalThis as unknown as {
   postMessage: (value: unknown) => void
 }
 
+// LOADED. Every module of this turn is in once its work module's import has
+// settled, either way: this entry ran, and the import was the last load. A
+// terminate from then on cannot land on a load, and threadWork terminates
+// only after this word (gHashTag/trios#1865).
+const sayLoaded = () => port.postMessage({ loaded: true })
+
 port.onmessage = async (event: MessageEvent) => {
   const { module, fn, arg } = event.data as {
     module: string
@@ -20,7 +26,10 @@ port.onmessage = async (event: MessageEvent) => {
     arg: unknown
   }
   try {
-    const loaded = (await import(module)) as Record<string, unknown>
+    const loaded = (await import(module).finally(sayLoaded)) as Record<
+      string,
+      unknown
+    >
     const call = loaded[fn]
     if (typeof call !== 'function')
       throw new Error(`${module} exports no ${fn}`)

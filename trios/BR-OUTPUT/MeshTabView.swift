@@ -11,10 +11,15 @@ struct MeshTabView: View {
     @StateObject private var triNetStatus = TriNetRepositoryStatusStore.shared
     @State private var selectedPeer: UInt32 = 2
     @State private var selectedTab: MeshTab = .status
+    // The Queen names this petal "DePIN NODE": lending this Mac to the Queen
+    // (trios#1756) is its third segment.
+    @ObservedObject private var hosting = HostingPanelModel.shared
+    @State private var seenHostingFocus = 0
 
     private enum MeshTab: String, CaseIterable {
         case status = "Status"
         case chat = "Chat"
+        case hosting = "Hosting"
     }
 
     var body: some View {
@@ -28,15 +33,28 @@ struct MeshTabView: View {
                 statusContent
             case .chat:
                 MeshChatView()
+            case .hosting:
+                HostingTabView(model: hosting)
             }
         }
         .background(Color.clear)
         .onAppear {
             viewModel.startPolling()
+            takeHostingFocus()
+        }
+        .onChange(of: hosting.focusRequest) {
+            takeHostingFocus()
         }
         .onDisappear {
             viewModel.stopPolling()
         }
+    }
+
+    /// The badge asked for the Hosting segment since this view last looked.
+    private func takeHostingFocus() {
+        guard hosting.focusRequest != seenHostingFocus else { return }
+        seenHostingFocus = hosting.focusRequest
+        selectedTab = .hosting
     }
 
     private var tabPicker: some View {

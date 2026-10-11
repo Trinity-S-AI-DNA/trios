@@ -106,3 +106,9 @@ port.onmessage = (event: MessageEvent) => {
   )
   setInterval(() => void beat(), NODE_HEARTBEAT_SECONDS * 1000)
 }
+
+// LOADED. Every module of this thread is in by the time this line runs, so a
+// terminate from now on cannot land on a load: createPgLink ends the thread
+// only after this word (`endBeat`, gHashTag/trios#1813). Not on the main
+// thread, where the live test imports nodeBeat.
+if (!Bun.isMainThread) port.postMessage({ loaded: true })

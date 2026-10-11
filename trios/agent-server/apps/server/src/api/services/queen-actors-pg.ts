@@ -303,19 +303,42 @@ export async function createPgLink(
   let heartbeat: ReturnType<typeof setInterval> | undefined
   let poll: ReturnType<typeof setInterval> | undefined
   let beatThread: Worker | undefined
+  // settles once the beat thread has loaded every module, or failed to
+  let beatLoaded: Promise<void> = Promise.resolve()
+  let beatEnded: Promise<void> | undefined
   let listener: PoolClient | null = null
+
+  /**
+   * THE BEAT THREAD IS ENDED ONLY ONCE IT HAS LOADED (gHashTag/trios#1813).
+   * Bun 1.3.6 and 1.3.11 crash the whole process when a worker is terminated
+   * while its modules are still being transpiled: a transpiler job on Bun's
+   * thread pool writes into the source map table of the worker that is gone
+   * (Segmentation fault at 0xFFFFFFFFFFFFFFF8 in SavedSourceMap.putValue).
+   * A node stopped or fenced within milliseconds of its start did exactly
+   * that, and the pglive suite died after its tests had passed. So the end
+   * waits for the thread's word that it loaded, or for the error or exit
+   * that ends a load that failed. No timeout: those three are every way a
+   * load ends. Bun 1.4.3 survives the same churn.
+   */
+  const endBeat = (): Promise<void> => {
+    beatEnded ??= beatLoaded.then(() => {
+      beatThread?.terminate()
+      beatThread = undefined
+    })
+    return beatEnded
+  }
 
   const halt = async () => {
     if (heartbeat) clearInterval(heartbeat)
     if (poll) clearInterval(poll)
-    beatThread?.terminate()
-    beatThread = undefined
+    const beatGone = endBeat()
     if (listener) {
       const l = listener
       listener = null
       await l.query(`UNLISTEN ${channel}`).catch(() => undefined)
       l.release()
     }
+    await beatGone
   }
 
   const fence = (why: string) => {
@@ -551,9 +574,17 @@ export async function createPgLink(
     else Atomics.store(slots, BEAT_REFUSED, 1n)
   }
   if (url) {
-    beatThread = new Worker(
+    const thread = new Worker(
       new URL('./queen-actors-pg-beat.ts', import.meta.url).href,
     )
+    beatThread = thread
+    beatLoaded = new Promise<void>((loaded) => {
+      thread.addEventListener('message', (event: MessageEvent) => {
+        if ((event.data as { loaded?: boolean }).loaded) loaded()
+      })
+      thread.addEventListener('error', () => loaded())
+      thread.addEventListener('close', () => loaded())
+    })
     beatThread.onmessage = (event: MessageEvent) => {
       const m = event.data as { refused?: boolean; stalled?: number }
       if (m.stalled !== undefined) stats.stalledBeats++
