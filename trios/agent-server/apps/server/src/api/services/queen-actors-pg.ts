@@ -439,8 +439,8 @@ export async function createPgLink(
   // running when stop() was called is the one stop() waits for, and a read
   // that answers after the stop hands nothing on and acknowledges nothing.
   // Before, a poll's read still on its way reached the store after mail sent
-  // to the stopped node, handled it there and deleted it, so that mail was
-  // neither kept for the node's next start to expire nor seen by anyone.
+  // to the stopped node, handed it to that node's actors and deleted it: mail
+  // the node took in after it had stopped, not kept for the expiry.
   let draining: Promise<void> | null = null
   let again = false
   const drain = async () => {
