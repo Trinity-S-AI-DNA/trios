@@ -21,15 +21,35 @@ import { describe, expect, it } from 'bun:test'
 import {
   getPrimaryGraderResult,
   isSuccessfulResult,
+  type TaskResult,
 } from './types'
+
+// TaskResult is a discriminated union over full task records; the
+// guard only reads `status`, so the fixtures carry placeholder fields
+// for the variants the type demands (the `as unknown as` pattern of
+// bridge-server.test.ts).
+const completedResult = {
+  status: 'completed',
+  task: {},
+  agentResult: {},
+  graderResults: {},
+  durationMs: 1,
+} as unknown as TaskResult
+const timeoutResult = {
+  status: 'timeout',
+  task: {},
+  agentResult: {},
+  graderResults: {},
+  durationMs: 1,
+} as unknown as TaskResult
 
 describe('isSuccessfulResult', () => {
   it('counts a completed task as a success', () => {
-    expect(isSuccessfulResult({ status: 'completed' })).toBe(true)
+    expect(isSuccessfulResult(completedResult)).toBe(true)
   })
 
   it('counts a task that hit its time ceiling as a success', () => {
-    expect(isSuccessfulResult({ status: 'timeout' })).toBe(true)
+    expect(isSuccessfulResult(timeoutResult)).toBe(true)
   })
 
   it('refuses every other status a task can end with', () => {
