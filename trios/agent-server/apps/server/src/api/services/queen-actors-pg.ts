@@ -434,7 +434,14 @@ export async function createPgLink(
   }
   // A notification that lands while a drain runs is not dropped: the drain
   // reads again before it ends. Dropped, the row waited for the next poll.
-  let draining = false
+  //
+  // A STOPPED NODE HANDLES NO MAIL (gHashTag/trios#1810). The drain that was
+  // running when stop() was called is the one stop() waits for, and a read
+  // that answers after the stop hands nothing on and acknowledges nothing.
+  // Before, a poll's read still on its way reached the store after mail sent
+  // to the stopped node, handed it to that node's actors and deleted it: mail
+  // the node took in after it had stopped, not kept for the expiry.
+  let draining: Promise<void> | null = null
   let again = false
   const drain = async () => {
     if (stopped || fencedNow()) return
@@ -442,21 +449,27 @@ export async function createPgLink(
       again = true
       return
     }
-    draining = true
-    try {
-      do {
-        again = false
-        await drainOnce()
-      } while (again && !stopped && !fenced)
-    } finally {
-      draining = false
-    }
+    const run = (async () => {
+      try {
+        do {
+          again = false
+          await drainOnce()
+        } while (again && !stopped && !fenced)
+      } finally {
+        draining = null
+      }
+    })()
+    draining = run
+    await run
   }
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: one pass over a batch of mail rows, one branch per netlink.t27 mail_action answer; the decisions are the card's
   const drainOnce = async () => {
     try {
       for (;;) {
+        if (stopped) return
         const got = await pool.query(READ_SQL, [node, MAIL_BATCH_ROWS])
+        // a read that answers after the stop: its rows stay where they are
+        if (stopped) return
         const rows = got.rows as Array<{
           id: string
           to_inc: string
@@ -643,6 +656,8 @@ export async function createPgLink(
     stop: async () => {
       stopped = true
       await halt()
+      // the drain that was running ends before the stop does (trios#1810)
+      await draining?.catch(() => undefined)
       await sending.catch(() => undefined)
     },
   }
