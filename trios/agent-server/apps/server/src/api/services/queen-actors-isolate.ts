@@ -21,6 +21,21 @@ const THREAD_ENTRY = new URL('./queen-actor-thread.ts', import.meta.url).href
  * Run `fn` exported from `module` in a fresh worker thread. The thread is
  * terminated when the work ends or is stopped, so one turn never inherits
  * another's state. A terminate is not certain to stop it (see above).
+ *
+ * THE THREAD IS ENDED ONLY ONCE IT HAS LOADED (gHashTag/trios#1865). Bun
+ * 1.3.6, the version CI and the production image pin, crashes the whole
+ * process when a worker is terminated while its modules are still being
+ * transpiled: a transpiler job writes into the source map table of the
+ * worker that is gone (Segmentation fault at 0xFFFFFFFFFFFFFFF8, the crash
+ * the PgLink beat thread hit, trios#1813). A stop within 30 ms of the start
+ * did exactly that: 5 of 20 runs of queen-actors-thread-stop.test.ts crashed
+ * on 1.3.6. So every terminate waits for the thread's word that its entry and
+ * its work module are in, or for the error or close that ends a load that
+ * failed, and the thread is terminated once. No timeout: those three are
+ * every way a load ends, save a work module whose top-level await never
+ * settles, and such a thread is never ended (no work module here has one).
+ * A stop asked for during the load lands as soon as it ends. When to stop is
+ * still the card's (kill_effect, escalation).
  */
 export function threadWork(
   module: string,
@@ -28,33 +43,38 @@ export function threadWork(
   arg: unknown,
 ): IsolatedWork {
   const worker = new Worker(THREAD_ENTRY)
-  let done = false
+  let loadEnded: () => void = () => {}
+  const loaded = new Promise<void>((settle) => {
+    loadEnded = settle
+  })
+  worker.addEventListener('error', () => loadEnded())
+  worker.addEventListener('close', () => loadEnded())
+  let ending = false
+  const end = () => {
+    if (ending) return
+    ending = true
+    void loaded.then(() => worker.terminate())
+  }
   const result = new Promise<unknown>((resolve, reject) => {
     worker.onmessage = (event: MessageEvent) => {
-      done = true
-      worker.terminate()
       const data = event.data as {
+        loaded?: boolean
         ok: boolean
         value?: unknown
         error?: string
       }
+      if (data.loaded) return loadEnded()
+      end()
       if (data.ok) resolve(data.value)
       else reject(new Error(data.error ?? 'thread work failed'))
     }
     worker.onerror = (event) => {
-      done = true
-      worker.terminate()
+      end()
       reject(new Error(event.message))
     }
   })
   worker.postMessage({ module, fn, arg })
-  return {
-    result,
-    stop: () => {
-      if (!done) worker.terminate()
-      done = true
-    },
-  }
+  return { result, stop: end }
 }
 
 /**
