@@ -820,6 +820,15 @@ export interface ReviewDeps {
   importRunnerBranch?: (
     issue: number,
   ) => Promise<{ ok: true; imported: boolean } | { ok: false; error: string }>
+  /**
+   * Whether a runner stored a bundle for the issue, and the minutes since the
+   * attempt `conversation` finished; null when that is not the finished row.
+   * Asked only with TRIOS_QUEEN_NO_BUNDLE_EMPTY=on. Optional for fakes.
+   */
+  runnerBundleFacts?: (
+    issue: number,
+    conversation: string | null,
+  ) => Promise<{ stored: boolean; minutesSinceFinished: number } | null>
 }
 
 export function defaultReviewDeps(): ReviewDeps {

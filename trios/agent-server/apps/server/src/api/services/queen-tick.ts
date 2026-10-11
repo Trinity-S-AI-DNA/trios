@@ -41,7 +41,7 @@ import type { Pool } from 'pg'
 import { createQueenPool } from '../../lib/db/queen-pool'
 import { logger } from '../../lib/logger'
 import { startModelProbes, workerModelRanking } from '../../lib/model-ranking'
-import { importRunnerBranch } from '../routes/queen-export'
+import { importRunnerBranch, runnerBundleFacts } from '../routes/queen-export'
 import { outstandingEscalations } from '../routes/queen-needs-you'
 import { actorEventsOn } from './queen-actor-events'
 import { advanceApp } from './queen-app'
@@ -128,6 +128,8 @@ import type { LaneGate } from './queen-review-lanes'
 import { LANE_GO, LANE_STOPPED } from './queen-review-lanes-card.gen'
 import {
   drainReviewerRound,
+  noBundleEmptyEnabled,
+  noBundleIsEmpty,
   reviewerRunning,
   roundReviews,
   startReviewer,
@@ -162,6 +164,7 @@ import {
   sameModelAs,
   visiblePatchPaths,
 } from './queen-reviewer'
+import { NO_BUNDLE_GRACE_MINUTES } from './queen-reviewer-card.gen'
 import { idleRunner, reapSilentRunners } from './queen-runner-work'
 import { isRunnerLane } from './queen-runners'
 import { startShaping } from './queen-shaper'
@@ -3298,6 +3301,31 @@ function interruptible(
   return out as unknown as ReviewDeps
 }
 
+/**
+ * reviewer.t27 `no_bundle_is_empty`, asked for a row whose diff could not be
+ * read (gHashTag/t27#9069): true when a runner's bee left no bundle and the
+ * grace for a late one has passed. With TRIOS_QUEEN_NO_BUNDLE_EMPTY off, or
+ * no fact source, it asks nothing and answers false, so the row waits as it
+ * always did.
+ */
+async function runnerLeftNoBundle(
+  deps: ReviewDeps,
+  issue: number,
+  conversation: string | null,
+  onRunner: boolean,
+): Promise<boolean> {
+  if (!deps.runnerBundleFacts || !noBundleEmptyEnabled()) return false
+  const facts = await deps.runnerBundleFacts(issue, conversation)
+  if (!facts) return false
+  if (!noBundleIsEmpty(onRunner, facts.stored, facts.minutesSinceFinished))
+    return false
+  logger.info('Queen found no bundle of a finished runner bee', {
+    issue,
+    minutesSinceFinished: facts.minutesSinceFinished,
+  })
+  return true
+}
+
 export async function reviewFinishedDispatches(
   pool: Pool,
   overrides: Partial<ReviewDeps> = {},
@@ -3311,6 +3339,8 @@ export async function reviewFinishedDispatches(
         await contributorRuntime(pool, environmentContributorKeys()),
       ),
     importRunnerBranch: (issue) => importRunnerBranch(pool, issue),
+    runnerBundleFacts: (issue, conversation) =>
+      runnerBundleFacts(pool, issue, conversation),
     ...overrides,
   })
   // a stopped review writes nothing from here on
@@ -3461,7 +3491,24 @@ export async function reviewFinishedDispatches(
     }
     // ONE git diff, asked once and used twice. The count is what the review
     // policy weighs; the names are what the boundary rule compares.
-    const diff = await deps.committedFilesResult(issue)
+    let diff = await deps.committedFilesResult(issue)
+    // A RUNNER BEE THAT COMMITTED NOTHING LEFT NOTHING TO READ (reviewer.t27
+    // no_bundle_is_empty, gHashTag/t27#9069; TRIOS_QUEEN_NO_BUNDLE_EMPTY=on).
+    // A runner stores a bundle only for a bee that committed something, so
+    // such a bee's branch never reaches this checkout and the diff below
+    // fails on a branch that does not exist - for six hours, until the
+    // frozen-wait valve. Once the card says the grace for a late bundle has
+    // passed, the branch is read as what it is, a branch with no commit, and
+    // the row is judged exactly as a container bee that committed nothing.
+    const noBundle =
+      !diff.ok &&
+      (await runnerLeftNoBundle(
+        deps,
+        issue,
+        conversation,
+        Boolean(row.claimed_by),
+      ))
+    if (noBundle) diff = { ok: true, files: [] }
     if (!diff.ok) {
       // A DIFF THAT COULD NOT BE READ DECIDES NOTHING. It used to arrive as
       // `[]`, and a bee that had written verdict lines was then judged as if
@@ -3555,6 +3602,12 @@ export async function reviewFinishedDispatches(
           : `Nothing new was committed on queen-${issue} since the last attempt ` +
             `was judged (the branch is still at ${String(branchHead).slice(0, 12)}) ` +
             'and no verdict was written, so there was nothing new to judge.') +
+        (noBundle
+          ? ` The runner that ran it stored no bundle of queen-${issue} within ` +
+            `${NO_BUNDLE_GRACE_MINUTES} minutes of the turn's end; a runner ` +
+            'stores one whenever the turn committed and the bundle could be ' +
+            'written, so nothing it committed, if anything, reached the Queen.'
+          : '') +
         (dirty && dirty > 0
           ? ` ${dirty} uncommitted file(s) remain in the worktree; the next ` +
             'attempt reuses it, so they are not lost - commit them.'
@@ -3596,6 +3649,8 @@ export async function reviewFinishedDispatches(
         reviewerCached: false,
         files: files.length,
         diffOk: true,
+        // only with TRIOS_QUEEN_NO_BUNDLE_EMPTY, so the line is unchanged without it
+        ...(noBundle ? { noBundle: true } : {}),
         // How many of those files the container committed for the bee.
         salvaged: Array.isArray(row.salvaged_files)
           ? row.salvaged_files.length

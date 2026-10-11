@@ -19,6 +19,8 @@ export const WAIT_REVISIT_BASE_SECONDS = 30 satisfies number;
 export const WAIT_REVISIT_CAP_SECONDS = 900 satisfies number;
 // t27c gen-ts: fn revisit_after_seconds was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn due_again was not emitted -- this backend lowers declarations, not bodies.
+export const NO_BUNDLE_GRACE_MINUTES = 10 satisfies number;
+// t27c gen-ts: fn no_bundle_is_empty was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -26,12 +28,17 @@ export const WAIT_REVISIT_CAP_SECONDS = 900 satisfies number;
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["REVIEWER_EVERY_SECONDS", "REVIEWER_CONCURRENCY", "REVIEWER_CEILING", "SECONDS_PER_HOUR", "REVIEW_ROW_SECONDS", "WAIT_REVISIT_BASE_SECONDS", "WAIT_REVISIT_CAP_SECONDS"] as const;
+export const __DECL_ORDER__ = ["REVIEWER_EVERY_SECONDS", "REVIEWER_CONCURRENCY", "REVIEWER_CEILING", "SECONDS_PER_HOUR", "REVIEW_ROW_SECONDS", "WAIT_REVISIT_BASE_SECONDS", "WAIT_REVISIT_CAP_SECONDS", "NO_BUNDLE_GRACE_MINUTES"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not
