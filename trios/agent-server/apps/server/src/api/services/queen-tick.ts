@@ -92,7 +92,14 @@ import {
 import { drainBoundedEnabled } from './queen-drain'
 import { pruneEvents, wakesHere } from './queen-events'
 import { ACTOR_STREAM } from './queen-events.gen'
-import { heldPaths, type IssueNow } from './queen-holds'
+import {
+  claimOfState,
+  heldPaths,
+  type IssueNow,
+  releaseDeadClaimsEnabled,
+  sendBackClaim,
+} from './queen-holds'
+import { CL_FREE } from './queen-holds.gen'
 import {
   advanceJobs,
   defaultJobIo,
@@ -807,6 +814,12 @@ export function stateOfDispatch(
     criteria?: number
     freeAttempts?: number
     reviewerMisses?: number
+    /**
+     * TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (holds.t27 send_back_claim, t27#9111).
+     * Read from the environment when not given, so the round and the board
+     * read one rule.
+     */
+    releaseDeadClaims?: boolean
   } = {},
 ):
   | 'running'
@@ -872,6 +885,18 @@ export function stateOfDispatch(
   const idleMinutes = Math.floor(idleMs / 60_000)
 
   if (verdict === 'sendBack') {
+    // NOBODY COMES BACK TO A SEND-BACK (holds.t27 send_back_claim, t27#9111,
+    // behind TRIOS_QUEEN_RELEASE_DEAD_CLAIMS). The verdict is written on a
+    // finished row, a runner deletes the bee's session when its turn ends, and
+    // nothing resumes it - so the idle hour below is an hour of waiting for no
+    // one. Measured 2026-10-11 12:55Z: 8 of 89 claims were send-backs under
+    // the ceiling. Under the ceiling the card frees the issue at once; at the
+    // ceiling it falls through to the review valve, as before.
+    if (
+      (lease.releaseDeadClaims ?? releaseDeadClaimsEnabled()) &&
+      sendBackClaim(sendBacks, ceiling) === CL_FREE
+    )
+      return 'failed'
     if (idleMs >= SEND_BACK_IDLE_FLOOR_MS && sendBacks < ceiling)
       return 'failed'
     // AT THE CEILING, THE ISSUE STOPS BEING THE SWARM'S - BUT ITS FILES MUST
@@ -1998,7 +2023,7 @@ export async function runRound(
       !finished &&
       typeof row.key_index === 'number' &&
       isRunnerLane(row.key_index)
-    return boardTask(owner, repoName, {
+    const task = boardTask(owner, repoName, {
       conversationId: row.conversation_id,
       issue: row.issue,
       // holds.t27: finished work lets go of its files after a while, and an
@@ -2049,6 +2074,20 @@ export async function runRound(
       outputTokens:
         row.output_tokens == null ? undefined : Number(row.output_tokens),
     })
+    // A FREED CLAIM HOLDS NO FILES (holds.t27 held_stage, t27#9111, behind
+    // TRIOS_QUEEN_RELEASE_DEAD_CLAIMS). A send-back freed as `failed` kept its
+    // files for SEND_BACK_HOLD_MINUTES, so its own next attempt was refused as
+    // "held by" itself until they ran out. Off: the row is exactly as above.
+    if (!releaseDeadClaimsEnabled()) return task
+    return {
+      ...task,
+      ownedPaths: heldPaths(
+        row,
+        Date.now(),
+        issueNow(issuesNow, row.issue),
+        claimOfState(task.state),
+      ),
+    }
   })
 
   // CLOSED BY THE REVIEW VALVE IS NOT CHOSEN AGAIN. `cancelled` frees the
