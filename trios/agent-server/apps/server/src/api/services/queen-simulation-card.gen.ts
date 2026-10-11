@@ -9,6 +9,10 @@ export const RUNS_PER_SEED = 2 satisfies number;
 export const GATE_BASE_SEED = 1712 satisfies number;
 export const FEATURE_TURN_STOP = 1 satisfies number;
 export const TURN_STOP_EVERY = 2 satisfies number;
+export const FEATURE_ADAPTIVE_POOL = 2 satisfies number;
+export const FEATURE_LANE_QUEUE = 4 satisfies number;
+export const ADAPTIVE_EVERY = 2 satisfies number;
+export const LANE_QUEUE_EVERY = 4 satisfies number;
 // t27c gen-ts: fn seed_features was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn has_feature was not emitted -- this backend lowers declarations, not bodies.
 export const STORE_SEEDS_PER_RUN = 2 satisfies number;
@@ -93,7 +97,13 @@ export const INV_HOT_LOOP = 6 satisfies number;
 export const INV_RUNS_DIFFER = 7 satisfies number;
 export const INV_RARE_STATE_MISSED = 8 satisfies number;
 export const INV_TAKEN_NOT_HANDLED = 9 satisfies number;
-export const INV_KINDS = 10 satisfies number;
+export const INV_DUPLICATE_CLAIM = 10 satisfies number;
+export const INV_OVER_LANES = 11 satisfies number;
+export const INV_NOT_FINISHED = 12 satisfies number;
+export const INV_LANE_LEAK = 13 satisfies number;
+export const INV_CALL_CHAIN = 14 satisfies number;
+export const INV_STOP_OVERRAN = 15 satisfies number;
+export const INV_KINDS = 16 satisfies number;
 // t27c gen-ts: fn fails_gate was not emitted -- this backend lowers declarations, not bodies.
 export const SECONDS_PER_MINUTE = 60 satisfies number;
 export const HOT_ROW_SLACK = 1 satisfies number;
@@ -109,8 +119,96 @@ export const RARE_WAIT_BACKED_OFF = 4 satisfies number;
 export const RARE_SLICE_YIELDED = 5 satisfies number;
 export const RARE_MOVED_NODE = 6 satisfies number;
 export const RARE_REVIEW_STOPPED = 7 satisfies number;
-export const RARE_KINDS = 8 satisfies number;
+export const RARE_STOOD_DOWN = 8 satisfies number;
+export const RARE_ADMISSION_RESTARTED = 9 satisfies number;
+export const RARE_LEASE_LAPSED = 10 satisfies number;
+export const RARE_CYCLE_REFUSED = 11 satisfies number;
+export const RARE_STOP_KILLED = 12 satisfies number;
+export const RARE_GROUP_KILLED = 13 satisfies number;
+export const RARE_LANE_FREED_ON_EXIT = 14 satisfies number;
+export const RARE_GRANT_TAKEN_BACK = 15 satisfies number;
+export const RARE_POOL_GREW = 16 satisfies number;
+export const RARE_POOL_RETIRED = 17 satisfies number;
+export const RARE_LANE_WAITED = 18 satisfies number;
+export const RARE_KINDS = 19 satisfies number;
 // t27c gen-ts: fn must_reach was not emitted -- this backend lowers declarations, not bodies.
+export const KEYED_SEEDS_PER_RUN = 8 satisfies number;
+export const KEYED_BASE_SEED = 1729 satisfies number;
+export const KEYED_DISPATCHERS = 2 satisfies number;
+export const KEYED_LANES = 4 satisfies number;
+export const KEYED_ROUND_SECONDS = 60 satisfies number;
+export const SIM_RUNNER_CAP_SECONDS = 21600 satisfies number;
+export const KEYED_TAIL_SECONDS = 28800 satisfies number;
+export const K_TICK = 0 satisfies number;
+export const K_ARRIVAL = 1 satisfies number;
+export const KF_ADMISSION_CRASH = 2 satisfies number;
+export const KF_ISSUE_CRASH = 3 satisfies number;
+export const KF_POLICY_STALL = 4 satisfies number;
+export const KF_DEPLOY = 5 satisfies number;
+export const KF_CYCLE_PROBE = 6 satisfies number;
+export const KF_DEAF_TURN = 7 satisfies number;
+export const K_EVENT_KINDS = 8 satisfies number;
+export const KW_ARRIVAL = 120 satisfies number;
+export const KW_ADMISSION_CRASH = 4 satisfies number;
+export const KW_ISSUE_CRASH = 40 satisfies number;
+export const KW_POLICY_STALL = 6 satisfies number;
+export const KW_DEPLOY = 3 satisfies number;
+export const KW_CYCLE_PROBE = 30 satisfies number;
+export const KW_DEAF_TURN = 6 satisfies number;
+// t27c gen-ts: fn keyed_event was not emitted -- this backend lowers declarations, not bodies.
+export const BEE_OK = 0 satisfies number;
+export const BEE_FAIL = 1 satisfies number;
+export const BEE_CRASH = 2 satisfies number;
+export const BEE_HANG = 3 satisfies number;
+export const BEE_FAIL_PER_MILLE = 80 satisfies number;
+export const BEE_CRASH_PER_MILLE = 50 satisfies number;
+export const BEE_HANG_PER_MILLE = 30 satisfies number;
+// t27c gen-ts: fn bee_fate was not emitted -- this backend lowers declarations, not bodies.
+export const BEE_MIN_SECONDS = 60 satisfies number;
+export const BEE_MAX_SECONDS = 1800 satisfies number;
+export const BEE_FAIL_PERCENT = 30 satisfies number;
+export const BEE_CRASH_PERCENT = 50 satisfies number;
+export const BEE_HANG_PERCENT = 20 satisfies number;
+export const BEE_TURN_MAX_SECONDS = 2400 satisfies number;
+export const HEARTBEAT_SECONDS = 60 satisfies number;
+export const RUNNER_POLL_SECONDS = 15 satisfies number;
+export const POLICY_MS = 500 satisfies number;
+export const CLAIM_MS = 1000 satisfies number;
+export const ADMIT_AFTER_SECONDS = 30 satisfies number;
+export const POLICY_STALL_SECONDS = 40 satisfies number;
+export const CLAIM_HANG_SECONDS = 30 satisfies number;
+export const DEPLOY_STOP_AFTER_MS = 2000 satisfies number;
+export const DEPLOY_GAP_SECONDS = 20 satisfies number;
+export const SIM_WORKER_SHUTDOWN_MS = 5000 satisfies number;
+// t27c gen-ts: fn stop_overran was not emitted -- this backend lowers declarations, not bodies.
+export const PROBE_FILLERS = 64 satisfies number;
+export const CHAIN_PROBE_MAX = 5 satisfies number;
+export const PROBE_CALL_MS = 5000 satisfies number;
+export const PROBE_OPEN_EVERY = 4 satisfies number;
+// t27c gen-ts: fn probe_length was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn probe_open was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn probe_back_to was not emitted -- this backend lowers declarations, not bodies.
+export const DEAF_TURN_SECONDS = 30 satisfies number;
+export const DEAF_WORK_SECONDS = 3600 satisfies number;
+export const SIM_TURN_STOP_GRACE_MS = 3000 satisfies number;
+// t27c gen-ts: fn deaf_work_overran was not emitted -- this backend lowers declarations, not bodies.
+export const FEATURE_EARLY_TIMERS = 8 satisfies number;
+export const EARLY_TIMERS_EVERY = 2 satisfies number;
+export const TIMER_EARLY_MAX_MS = 3 satisfies number;
+export const STREAM_EARLY = 10 satisfies number;
+export const STREAM_LANES = 11 satisfies number;
+// t27c gen-ts: fn keyed_features was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn timer_early_ms was not emitted -- this backend lowers declarations, not bodies.
+export const WAITING_STUCK_SECONDS = 600 satisfies number;
+// t27c gen-ts: fn waiting_stuck was not emitted -- this backend lowers declarations, not bodies.
+export const LANE_IDLE_SECONDS = 120 satisfies number;
+// t27c gen-ts: fn lane_held_by_nobody was not emitted -- this backend lowers declarations, not bodies.
+export const LANE_EPOCH_STEPS = 150 satisfies number;
+export const BEE_KEYS_MAX = 5 satisfies number;
+export const WITNESS_PERCENT = 30 satisfies number;
+export const POOL_FREE_MB = 8192 satisfies number;
+// t27c gen-ts: fn bee_keys was not emitted -- this backend lowers declarations, not bodies.
+export const SIM_REVIEWER_CEILING = 16 satisfies number;
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -123,6 +221,26 @@ export const RARE_KINDS = 8 satisfies number;
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -136,7 +254,7 @@ export const RARE_KINDS = 8 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["SEEDS_PER_RUN", "STEPS_PER_RUN", "RUNS_PER_SEED", "GATE_BASE_SEED", "FEATURE_TURN_STOP", "TURN_STOP_EVERY", "STORE_SEEDS_PER_RUN", "TAIL_SECONDS", "LOG_TAIL_LINES", "MASK32", "STREAM_SEED", "STREAM_STEP", "STREAM_DELAY", "STREAM_TARGET", "STREAM_DURATION", "STREAM_ATTEMPT", "STREAM_LATENCY", "STREAM_CLOCK", "STREAM_STORE", "ROLL_SPAN", "E_TICK", "E_ARRIVAL", "E_JOB", "F_NODE_LOSS", "F_HUNG_TURN", "F_MAILBOX_OVERFLOW", "F_UNREADABLE_ROW", "F_PROVIDER_429", "F_STALE_LEASE", "F_CRASH", "EVENT_KINDS", "W_ARRIVAL", "W_JOB", "W_NODE_LOSS", "W_HUNG_TURN", "W_MAILBOX_OVERFLOW", "W_UNREADABLE_ROW", "W_PROVIDER_429", "W_STALE_LEASE", "W_CRASH", "STEP_MAX_MS", "NODE_RESTART_MIN_SECONDS", "NODE_RESTART_MAX_SECONDS", "STALL_SECONDS", "PROVIDER_429_MIN_SECONDS", "PROVIDER_429_MAX_SECONDS", "REFUSED_REVIEW_MS", "STALE_LEASE_MIN_SECONDS", "STALE_LEASE_MAX_SECONDS", "UNREADABLE_MIN_SECONDS", "UNREADABLE_MAX_SECONDS", "WAIT_ANSWER_MS", "REVIEW_MIN_SECONDS", "REVIEW_MAX_SECONDS", "BURST_OVER_CAP", "DB_MAX_MS", "NET_LATENCY_MS", "JOB_MAX_MS", "STALE_JOB_EVERY", "STALE_PIDS_KEPT", "REVIEW_KEYS", "POOL_WORKERS", "POOL_NODES", "POOL_MAX_RESTARTS", "POOL_PERIOD_SECONDS", "W_ANSWER_LOST", "GIVE_UP_REARM_SECONDS", "CLOCK_TICK_MAX_MICROS", "INV_NONE", "INV_PID_REUSED", "INV_DELIVERED_AFTER_EXIT", "INV_INTENSITY", "INV_OVER_CAP", "INV_RESTART_WITHOUT_EXIT", "INV_HOT_LOOP", "INV_RUNS_DIFFER", "INV_RARE_STATE_MISSED", "INV_TAKEN_NOT_HANDLED", "INV_KINDS", "SECONDS_PER_MINUTE", "HOT_ROW_SLACK", "RARE_MAILBOX_FULL", "RARE_INTENSITY_SPENT", "RARE_TURN_KILLED", "RARE_MAIL_TO_LOST_NODE", "RARE_WAIT_BACKED_OFF", "RARE_SLICE_YIELDED", "RARE_MOVED_NODE", "RARE_REVIEW_STOPPED", "RARE_KINDS"] as const;
+export const __DECL_ORDER__ = ["SEEDS_PER_RUN", "STEPS_PER_RUN", "RUNS_PER_SEED", "GATE_BASE_SEED", "FEATURE_TURN_STOP", "TURN_STOP_EVERY", "FEATURE_ADAPTIVE_POOL", "FEATURE_LANE_QUEUE", "ADAPTIVE_EVERY", "LANE_QUEUE_EVERY", "STORE_SEEDS_PER_RUN", "TAIL_SECONDS", "LOG_TAIL_LINES", "MASK32", "STREAM_SEED", "STREAM_STEP", "STREAM_DELAY", "STREAM_TARGET", "STREAM_DURATION", "STREAM_ATTEMPT", "STREAM_LATENCY", "STREAM_CLOCK", "STREAM_STORE", "ROLL_SPAN", "E_TICK", "E_ARRIVAL", "E_JOB", "F_NODE_LOSS", "F_HUNG_TURN", "F_MAILBOX_OVERFLOW", "F_UNREADABLE_ROW", "F_PROVIDER_429", "F_STALE_LEASE", "F_CRASH", "EVENT_KINDS", "W_ARRIVAL", "W_JOB", "W_NODE_LOSS", "W_HUNG_TURN", "W_MAILBOX_OVERFLOW", "W_UNREADABLE_ROW", "W_PROVIDER_429", "W_STALE_LEASE", "W_CRASH", "STEP_MAX_MS", "NODE_RESTART_MIN_SECONDS", "NODE_RESTART_MAX_SECONDS", "STALL_SECONDS", "PROVIDER_429_MIN_SECONDS", "PROVIDER_429_MAX_SECONDS", "REFUSED_REVIEW_MS", "STALE_LEASE_MIN_SECONDS", "STALE_LEASE_MAX_SECONDS", "UNREADABLE_MIN_SECONDS", "UNREADABLE_MAX_SECONDS", "WAIT_ANSWER_MS", "REVIEW_MIN_SECONDS", "REVIEW_MAX_SECONDS", "BURST_OVER_CAP", "DB_MAX_MS", "NET_LATENCY_MS", "JOB_MAX_MS", "STALE_JOB_EVERY", "STALE_PIDS_KEPT", "REVIEW_KEYS", "POOL_WORKERS", "POOL_NODES", "POOL_MAX_RESTARTS", "POOL_PERIOD_SECONDS", "W_ANSWER_LOST", "GIVE_UP_REARM_SECONDS", "CLOCK_TICK_MAX_MICROS", "INV_NONE", "INV_PID_REUSED", "INV_DELIVERED_AFTER_EXIT", "INV_INTENSITY", "INV_OVER_CAP", "INV_RESTART_WITHOUT_EXIT", "INV_HOT_LOOP", "INV_RUNS_DIFFER", "INV_RARE_STATE_MISSED", "INV_TAKEN_NOT_HANDLED", "INV_DUPLICATE_CLAIM", "INV_OVER_LANES", "INV_NOT_FINISHED", "INV_LANE_LEAK", "INV_CALL_CHAIN", "INV_STOP_OVERRAN", "INV_KINDS", "SECONDS_PER_MINUTE", "HOT_ROW_SLACK", "RARE_MAILBOX_FULL", "RARE_INTENSITY_SPENT", "RARE_TURN_KILLED", "RARE_MAIL_TO_LOST_NODE", "RARE_WAIT_BACKED_OFF", "RARE_SLICE_YIELDED", "RARE_MOVED_NODE", "RARE_REVIEW_STOPPED", "RARE_STOOD_DOWN", "RARE_ADMISSION_RESTARTED", "RARE_LEASE_LAPSED", "RARE_CYCLE_REFUSED", "RARE_STOP_KILLED", "RARE_GROUP_KILLED", "RARE_LANE_FREED_ON_EXIT", "RARE_GRANT_TAKEN_BACK", "RARE_POOL_GREW", "RARE_POOL_RETIRED", "RARE_LANE_WAITED", "RARE_KINDS", "KEYED_SEEDS_PER_RUN", "KEYED_BASE_SEED", "KEYED_DISPATCHERS", "KEYED_LANES", "KEYED_ROUND_SECONDS", "SIM_RUNNER_CAP_SECONDS", "KEYED_TAIL_SECONDS", "K_TICK", "K_ARRIVAL", "KF_ADMISSION_CRASH", "KF_ISSUE_CRASH", "KF_POLICY_STALL", "KF_DEPLOY", "KF_CYCLE_PROBE", "KF_DEAF_TURN", "K_EVENT_KINDS", "KW_ARRIVAL", "KW_ADMISSION_CRASH", "KW_ISSUE_CRASH", "KW_POLICY_STALL", "KW_DEPLOY", "KW_CYCLE_PROBE", "KW_DEAF_TURN", "BEE_OK", "BEE_FAIL", "BEE_CRASH", "BEE_HANG", "BEE_FAIL_PER_MILLE", "BEE_CRASH_PER_MILLE", "BEE_HANG_PER_MILLE", "BEE_MIN_SECONDS", "BEE_MAX_SECONDS", "BEE_FAIL_PERCENT", "BEE_CRASH_PERCENT", "BEE_HANG_PERCENT", "BEE_TURN_MAX_SECONDS", "HEARTBEAT_SECONDS", "RUNNER_POLL_SECONDS", "POLICY_MS", "CLAIM_MS", "ADMIT_AFTER_SECONDS", "POLICY_STALL_SECONDS", "CLAIM_HANG_SECONDS", "DEPLOY_STOP_AFTER_MS", "DEPLOY_GAP_SECONDS", "SIM_WORKER_SHUTDOWN_MS", "PROBE_FILLERS", "CHAIN_PROBE_MAX", "PROBE_CALL_MS", "PROBE_OPEN_EVERY", "DEAF_TURN_SECONDS", "DEAF_WORK_SECONDS", "SIM_TURN_STOP_GRACE_MS", "FEATURE_EARLY_TIMERS", "EARLY_TIMERS_EVERY", "TIMER_EARLY_MAX_MS", "STREAM_EARLY", "STREAM_LANES", "WAITING_STUCK_SECONDS", "LANE_IDLE_SECONDS", "LANE_EPOCH_STEPS", "BEE_KEYS_MAX", "WITNESS_PERCENT", "POOL_FREE_MB", "SIM_REVIEWER_CEILING"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

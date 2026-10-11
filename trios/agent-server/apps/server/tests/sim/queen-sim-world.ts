@@ -16,10 +16,13 @@
  * WHAT RUNS IS THE REAL RUNTIME: createActorSystem, supervisor, remoteChild,
  * createMemoryNet (or the real createPgLink over the simulated store, see
  * queen-sim-pg-store.ts) and the reviewer actors (reviewerTree,
- * withWaitBackoff), on the virtual clock, with turns that really stop on the
- * seeds the card names. What is simulated is only what the runtime talks to:
- * the store (which rows wait, the lease), the review itself (its length, its
- * fate, its abort), the bus, and the nodes of the pool.
+ * withWaitBackoff), on the virtual clock, with turns that really stop, the
+ * adaptive pool (a dynamic supervisor the intake sizes) and the review lane
+ * queue on the seeds the card names (seed_features). What is simulated is only
+ * what the runtime talks to: the store (which rows wait, the lease), the
+ * review itself (its length, its fate, its abort, and with the queue its
+ * witness on no lane before its model call), the keys bees hold, the bus, and
+ * the nodes of the pool.
  *
  * WHAT DECIDES. The simulation card (queen/simulation.wasm): every random
  * number is its sim_roll(seed, stream, index); each step's event is its
@@ -66,35 +69,62 @@ import {
   X_KILLED,
 } from '../../src/api/services/queen-actors-card.gen'
 import { createMemoryNet } from '../../src/api/services/queen-actors-net'
+import { loadCardWasm } from '../../src/api/services/queen-card-wasm'
 import {
-  type CardWasm,
-  loadCardWasm,
-} from '../../src/api/services/queen-card-wasm'
-import { reviewerTree } from '../../src/api/services/queen-review-actors'
+  type PoolSize,
+  REVIEWER_SIZING_CARD,
+  type ReviewerActorDeps,
+  reviewerTree,
+} from '../../src/api/services/queen-review-actors'
+import {
+  type LaneGate,
+  REVIEW_LANES_CARD,
+} from '../../src/api/services/queen-review-lanes'
+import {
+  LANE_GO,
+  LANE_STOPPED,
+} from '../../src/api/services/queen-review-lanes-card.gen'
 import {
   type Judged,
   type ReviewerDeps,
   withWaitBackoff,
 } from '../../src/api/services/queen-review-loop'
 import {
+  REVIEWER_CEILING,
   REVIEWER_CONCURRENCY,
   WAIT_REVISIT_BASE_SECONDS,
 } from '../../src/api/services/queen-reviewer-card.gen'
 import * as S from '../../src/api/services/queen-simulation-card.gen'
 import { VirtualClock } from '../api/queen-virtual-clock'
+import {
+  type JournalOptions,
+  pickBetween,
+  type RunResult,
+  SIMULATION_CARD,
+  SimJournal,
+} from './queen-sim-journal'
 
-export const SIMULATION_CARD = 'queen/simulation.wasm'
+export {
+  failsGate,
+  INVARIANT_NAMES,
+  pickBetween,
+  RARE_NAMES,
+  type RunResult,
+  report,
+  SIMULATION_CARD,
+  simRoll,
+  type Violation,
+} from './queen-sim-journal'
+
 const ACTORS_CARD = 'queen/actors.wasm'
+/** The name queen-actors-links.ts gives a call's alias process. */
+const CALL_ALIAS = 'call-alias'
 const REVIEWER_CARD = 'queen/reviewer.wasm'
 
 const sim = () => loadCardWasm(SIMULATION_CARD)
 const u32 = (n: number) => n >>> 0
-export const simRoll = (seed: number, stream: number, index: number) =>
-  u32(sim().call('sim_roll', u32(seed), stream, u32(index)))
 export const runSeed = (base: number, i: number) =>
   u32(sim().call('run_seed', u32(base), u32(i)))
-export const pickBetween = (roll: number, lo: number, hi: number) =>
-  u32(sim().call('pick_between', u32(roll), u32(lo), u32(hi)))
 const stepEvent = (roll: number) => sim().call('step_event', u32(roll))
 const stepMs = (roll: number) => u32(sim().call('step_ms', u32(roll)))
 const mailboxBurst = (cap: number) => u32(sim().call('mailbox_burst', cap))
@@ -109,35 +139,13 @@ export const seedFeatures = (i: number) =>
 export const hasFeature = (features: number, feature: number) =>
   sim().call('has_feature', u32(features), u32(feature)) !== 0
 const stale = (roll: number) => sim().call('stale_job', u32(roll)) !== 0
+const beeKeys = (roll: number) => u32(sim().call('bee_keys', u32(roll)))
+const laneHeldByNobody = (seconds: number) =>
+  sim().call('lane_held_by_nobody', u32(seconds)) !== 0
 export const answerLost = (roll: number) =>
   sim().call('answer_lost', u32(roll)) !== 0
-export const failsGate = (inv: number) => sim().call('fails_gate', inv) !== 0
 export const mustReach = (state: number) =>
   sim().call('must_reach', state) !== 0
-
-export const INVARIANT_NAMES: Record<number, string> = {
-  [S.INV_PID_REUSED]: 'a pid was reused while mail to it was on the wire',
-  [S.INV_DELIVERED_AFTER_EXIT]: 'a turn ran for a process that had exited',
-  [S.INV_INTENSITY]: 'a supervisor restarted past its intensity',
-  [S.INV_OVER_CAP]: 'concurrency exceeded its cap',
-  [S.INV_RESTART_WITHOUT_EXIT]:
-    'a child started again before its previous incarnation ended',
-  [S.INV_HOT_LOOP]: 'a row was visited in a hot loop',
-  [S.INV_RUNS_DIFFER]: 'two runs of one seed logged differently',
-  [S.INV_RARE_STATE_MISSED]: 'a rare state was never reached',
-  [S.INV_TAKEN_NOT_HANDLED]:
-    'a node took mail off the wire and never handled it',
-}
-export const RARE_NAMES: Record<number, string> = {
-  [S.RARE_MAILBOX_FULL]: 'mailbox full',
-  [S.RARE_INTENSITY_SPENT]: 'intensity spent (a supervisor gave up)',
-  [S.RARE_TURN_KILLED]: 'turn killed at its bound',
-  [S.RARE_MAIL_TO_LOST_NODE]: 'mail lost on the wire to a lost node',
-  [S.RARE_WAIT_BACKED_OFF]: 'a row held back by the wait backoff',
-  [S.RARE_SLICE_YIELDED]: 'a scheduler yielded its slice',
-  [S.RARE_MOVED_NODE]: 'a child restarted on another node',
-  [S.RARE_REVIEW_STOPPED]: "a review stopped by its turn's abort",
-}
 
 /** A node link the world can crash and bring back, over some wire. */
 export interface Transport {
@@ -150,45 +158,17 @@ export interface Transport {
   stop?(): Promise<void>
 }
 
-export interface WorldOptions {
+export interface WorldOptions extends JournalOptions {
   /** Re-create the go-live defect: the reviewer without the wait backoff. */
   noWaitBackoff?: boolean
   /** A transport other than the memory net (the PgLink store model). */
   transport?: (world: SimWorld) => Transport
-  /** Keep every log line of this step, for a determinism diff. */
-  captureStep?: number
-  /**
-   * Invariants this run logs and counts but does not stop on: a known
-   * defect, so a run can look past it for another. Never set by the gate.
-   */
-  known?: number[]
   /** Turns that really stop (turn_stop.t27), the flag TRIOS_QUEEN_TURN_STOP sets. */
   turnStop?: boolean
-}
-
-export interface Violation {
-  inv: number
-  step: number
-  t: number
-  text: string
-  subjects: string[]
-}
-
-export interface RunResult {
-  seed: number
-  steps: number
-  violation: Violation | null
-  stepHashes: number[]
-  hash: number
-  rare: Set<number>
-  captured: string[]
-  /** Card calls made while the world quiesced after its steps. */
-  afterTail: string[]
-  /** The last log lines of the run, for a divergence the replay does not repeat. */
-  lines: string[]
-  counts: Record<string, number>
-  tail: string[]
-  ms: number
+  /** The adaptive pool (reviewer_sizing.t27), TRIOS_QUEEN_REVIEWER_ADAPTIVE=1. */
+  adaptive?: boolean
+  /** The review lane queue (review_lanes.t27), TRIOS_QUEEN_REVIEW_LANES=semaphore. */
+  laneQueue?: boolean
 }
 
 interface Incarnation {
@@ -210,15 +190,6 @@ interface Row {
   decided: boolean
 }
 
-interface LogLine {
-  n: number
-  t: number
-  step: number
-  text: string
-  subjects: string[]
-}
-
-const RING = 4000
 const fmtPid = (pid: Pid) => {
   const slot = pid >> 32n
   return `${pid}(n${Number(slot >> 20n)}.${Number(slot & 0xfffffn)}.g${Number(pid & 0xffffffffn)})`
@@ -228,25 +199,9 @@ const fmtPid = (pid: Pid) => {
  * One seed's world. `run` plays STEPS_PER_RUN steps (or `steps`) and the
  * quiet tail, and stops at the first violation.
  */
-export class SimWorld {
+export class SimWorld extends SimJournal {
   readonly clock = new VirtualClock()
-  step = -1
-  violation: Violation | null = null
-  readonly rare = new Set<number>()
-  readonly counts: Record<string, number> = {}
-  private hash = 0x811c9dc5
   private finalHash = 0
-  private lineNo = 0
-  /** Set when the run has ended: what still runs afterwards logs nothing. */
-  private closed = false
-  private readonly stepHashes: number[] = []
-  private readonly ring: LogLine[] = []
-  private readonly captured: string[] = []
-  private readonly names = new Map<string, number>()
-  private tapping = false
-  private quiescing = false
-  /** What ran while the world quiesced, for a divergence report. */
-  private readonly afterTail: string[] = []
 
   // the runtime, as the world sees it
   private readonly systems = new Map<number, ActorSystem>()
@@ -279,6 +234,14 @@ export class SimWorld {
   private readonly keysHeld = new Map<number, number>()
   private readonly visits = new Map<number, number[]>()
   private wake: () => void = () => {}
+  // the keys bees hold now, and the lane queue as the reviews see it: only on
+  // the seeds with the adaptive pool or the queue (simulation.t27 section 8)
+  private readonly beeKeys = new Set<number>()
+  private waiters = 0
+  /** The keys the reviewer reserves for its reviews, as it hands them out. */
+  private reserved: (() => number[]) | undefined
+  /** Since when each key the reviewer reserves has had no review holding it. */
+  private unheldSince = new Map<number, number>()
   /**
    * The reviewer's process, as the world models it. A reviewer whose root gave
    * up comes back with the next deploy, a new process: the reviews the old
@@ -305,12 +268,10 @@ export class SimWorld {
   ])
 
   constructor(
-    readonly seed: number,
+    seed: number,
     readonly options: WorldOptions = {},
-  ) {}
-
-  roll(stream: number, index: number): number {
-    return simRoll(this.seed, stream, index)
+  ) {
+    super(seed, options)
   }
 
   // THE WALL CLOCK THE RUNTIME READS (the slice; the store link's lease
@@ -335,122 +296,27 @@ export class SimWorld {
   /** The same clock in milliseconds, for the store link. */
   readonly wallMs = (): number => this.micros() / 1000
 
-  // --- the log ------------------------------------------------------------
-
-  private mix(n: number) {
-    if (this.closed) return
-    this.hash = Math.imul(this.hash ^ (n | 0), 16777619)
-  }
-  private mixText(s: string) {
-    for (let i = 0; i < s.length; i++) this.mix(s.charCodeAt(i))
-  }
-  private nameId(name: string): number {
-    let id = this.names.get(name)
-    if (id === undefined) {
-      id = this.names.size + 1
-      this.names.set(name, id)
-    }
-    return id
-  }
-  log(text: string, ...subjects: string[]) {
-    if (this.closed) return
-    this.mixText(text)
-    const line = {
-      n: this.lineNo++,
-      t: this.clock.now(),
-      step: this.step,
-      text,
-      subjects,
-    }
-    this.ring.push(line)
-    if (this.ring.length > RING) this.ring.splice(0, this.ring.length - RING)
-    if (this.options.captureStep === this.step)
-      this.captured.push(`t=${line.t} ${text}`)
-  }
-
-  fail(inv: number, text: string, ...subjects: string[]) {
-    if (this.closed || this.violation || !failsGate(inv)) return
-    if (this.options.known?.includes(inv)) {
-      this.count(`known${inv}`)
-      this.log(`known defect ${INVARIANT_NAMES[inv]}: ${text}`, ...subjects)
-      return
-    }
-    this.violation = {
-      inv,
-      step: this.step,
-      t: this.clock.now(),
-      text,
-      subjects,
-    }
-    this.log(`VIOLATION ${INVARIANT_NAMES[inv]}: ${text}`, ...subjects)
-  }
-
-  count(key: string) {
-    this.counts[key] = (this.counts[key] ?? 0) + 1
-  }
-
-  /** The last lines that name a subject of the violation: the minimal tail. */
-  tail(): string[] {
-    const v = this.violation
-    const fmt = (l: LogLine) =>
-      `  step ${l.step} t=${(l.t / 1000).toFixed(3)}s ${l.text}`
-    if (!v) return this.ring.slice(-S.LOG_TAIL_LINES).map(fmt)
-    const named = this.ring.filter((l) =>
-      l.subjects.some((s) => v.subjects.includes(s)),
-    )
-    return named.slice(-S.LOG_TAIL_LINES).map(fmt)
-  }
-
   // --- the card tap: every decision of the actors and reviewer cards -------
 
-  private tap(
-    file: string,
-    onCall: (name: string, a: unknown[], r: unknown) => void,
-  ) {
-    const card = loadCardWasm(file) as CardWasm
-    const call = card.call
-    const call64 = card.call64
-    card.call = (name: string, ...a: number[]) => {
-      const r = call(name, ...a)
-      if (!this.tapping) onCall(name, a, r)
-      return r
-    }
-    card.call64 = (name: string, ...a: Array<number | bigint>) => {
-      const r = call64(name, ...a)
-      if (!this.tapping) onCall(name, a, r)
-      return r
-    }
-    return () => {
-      card.call = call
-      card.call64 = call64
-    }
-  }
-
-  private journal(name: string, a: unknown[], r: unknown) {
-    this.mix(this.nameId(name))
-    for (const v of a) {
-      if (typeof v === 'bigint') {
-        this.mix(Number(v & 0xffffffffn))
-        this.mix(Number((v >> 32n) & 0xffffffffn))
-      } else this.mix(v as number)
-    }
-    if (typeof r === 'bigint') this.mix(Number(r & 0xffffffffn))
-    else this.mix(r as number)
-    if (this.options.captureStep === this.step)
-      this.captured.push(`card ${name}(${a.join(',')}) = ${r}`)
-    if (this.quiescing && this.afterTail.length < 200)
-      this.afterTail.push(`card ${name}(${a.join(',')}) = ${r}`)
-  }
-
-  private onActorsCall(name: string, a: unknown[], r: unknown) {
+  private onActorsCall(
+    name: string,
+    a: Array<number | bigint>,
+    r: number | bigint,
+  ): undefined {
     this.journal(name, a, r)
     if (name === 'on_child_exit') this.lastExitMax = a[3] as number
     else if (name === 'with_backoff') this.decided(r as number)
+    return undefined
   }
 
-  private onReviewerCall(name: string, a: unknown[], r: unknown) {
+  private onReviewerCall(
+    name: string,
+    a: Array<number | bigint>,
+    r: number | bigint,
+  ): undefined {
     this.journal(name, a, r)
     if (name === 'due_again' && r === 0) this.rare.add(S.RARE_WAIT_BACKED_OFF)
+    return undefined
   }
 
   /**
@@ -459,11 +325,14 @@ export class SimWorld {
    * get a supervisor of their own) and the pool's.
    */
   private supervisorsOf(child: string): string[] {
-    if (child === 'reviewer-intake') return ['reviewer-domain', 'queen-root']
+    if (child === 'reviewer-intake' || child === 'review-lanes')
+      return ['reviewer-domain', 'queen-root']
     if (child.startsWith('reviewer-worker-'))
-      return this.options.turnStop
-        ? ['reviewer-workers', 'reviewer-domain', 'queen-root']
-        : ['reviewer-domain', 'queen-root']
+      return this.options.adaptive
+        ? ['reviewer-pool', 'reviewer-domain', 'queen-root']
+        : this.options.turnStop
+          ? ['reviewer-workers', 'reviewer-domain', 'queen-root']
+          : ['reviewer-domain', 'queen-root']
     if (child.endsWith('-watch')) return ['pool']
     return []
   }
@@ -628,11 +497,16 @@ export class SimWorld {
             String(inc.pid),
           )
       }
-    // a child starts again only once the previous one ended
+    // a child starts again only once the previous one ended. A call's alias
+    // is a process of its own for each call, never a restart of another: two
+    // reviews in the lane queue call its owner at once (review_lanes.t27)
     const key = inc.child ?? `${inc.node}:${inc.name}`
-    const prev = inc.child
-      ? this.lastByChild.get(key)
-      : this.lastByName.get(key)
+    const prev =
+      inc.name === CALL_ALIAS
+        ? undefined
+        : inc.child
+          ? this.lastByChild.get(key)
+          : this.lastByName.get(key)
     if (prev && prev !== inc) {
       if (!prev.exited && this.alive(prev))
         this.fail(
@@ -880,6 +754,42 @@ export class SimWorld {
     return new Promise((r) => this.clock.after(ms, r))
   }
 
+  /** Lanes free for a review now: keys no review reserves and no bee holds. */
+  private freeLanes(reserved: number[]): number {
+    const taken = new Set(reserved)
+    let n = 0
+    for (let k = 0; k < S.REVIEW_KEYS; k++)
+      if (!taken.has(k) && !this.beeKeys.has(k)) n++
+    return n
+  }
+
+  /** The reviewer's dependencies, with the pool's and the queue's on their seeds. */
+  private reviewerActorDeps(): ReviewerActorDeps {
+    return {
+      ...this.reviewerDeps(),
+      laneQueue: this.options.laneQueue,
+      ...(this.options.adaptive
+        ? {
+            capacity: async (reserved: number[]) => {
+              await this.db()
+              return {
+                freeLanes: this.freeLanes(reserved),
+                freeMb: S.POOL_FREE_MB,
+                mbPerReview: 0,
+              }
+            },
+            onResize: (size: PoolSize) => {
+              this.log(
+                `pool: target ${size.target}, live ${size.live}, busy ${size.busy}, queued ${size.queued}, lanes ${size.lanes}`,
+              )
+              if (size.live > REVIEWER_CONCURRENCY)
+                this.rare.add(S.RARE_POOL_GREW)
+            },
+          }
+        : {}),
+    }
+  }
+
   private reviewerDeps(): ReviewerDeps {
     const base: ReviewerDeps = {
       holdsLease: async () => {
@@ -892,8 +802,8 @@ export class SimWorld {
           .filter((r) => !r.decided)
           .map((r) => r.issue)
       },
-      reviewOne: (issue, reservedKeys, onLane, signal) =>
-        this.reviewOne(issue, reservedKeys, onLane, signal),
+      reviewOne: (issue, reservedKeys, onLane, signal, lanes) =>
+        this.reviewOne(issue, reservedKeys, onLane, signal, lanes),
     }
     return this.options.noWaitBackoff
       ? base
@@ -930,11 +840,19 @@ export class SimWorld {
       )
   }
 
-  /** Concurrency: live review turns against the cap, and one row once. */
+  /**
+   * Concurrency: live review turns against the cap (the fixed workers', or
+   * the adaptive pool's ceiling), and one row once.
+   */
   private startReview(issue: number) {
     const turns = this.liveWorkerTurns()
-    if (overCap(turns, REVIEWER_CONCURRENCY))
-      this.fail(S.INV_OVER_CAP, `${turns} review turns at once`, `#${issue}`)
+    const cap = this.options.adaptive ? REVIEWER_CEILING : REVIEWER_CONCURRENCY
+    if (overCap(turns, cap))
+      this.fail(
+        S.INV_OVER_CAP,
+        `${turns} review turns at once, past ${cap}`,
+        `#${issue}`,
+      )
     const sameRow = (this.reviewsOf.get(issue) ?? 0) + 1
     this.reviewsOf.set(issue, sameRow)
     if (overCap(sameRow, 1))
@@ -973,7 +891,7 @@ export class SimWorld {
     const taken = new Set(reservedKeys())
     let key: number | undefined
     for (let k = 0; k < S.REVIEW_KEYS && key === undefined; k++)
-      if (!taken.has(k)) key = k
+      if (!taken.has(k) && !this.beeKeys.has(k)) key = k
     if (key === undefined) return undefined
     const held = (this.keysHeld.get(key) ?? 0) + 1
     this.keysHeld.set(key, held)
@@ -1008,44 +926,156 @@ export class SimWorld {
     else this.keysHeld.delete(key)
   }
 
+  /** Let `ms` pass, or less when the turn is stopped: whether it was. */
+  private pass(ms: number, signal?: AbortSignal): Promise<boolean> {
+    return new Promise<boolean>((r) => {
+      const cancel = this.clock.after(ms, () => {
+        signal?.removeEventListener('abort', stop)
+        r(false)
+      })
+      const stop = () => {
+        cancel()
+        r(true)
+      }
+      if (signal?.aborted) stop()
+      else signal?.addEventListener('abort', stop, { once: true })
+    })
+  }
+
+  /** A wait in the lane queue, counted: never more waiters than the ceiling. */
+  private async laneWait(issue: number, lanes: LaneGate): Promise<number> {
+    this.waiters++
+    this.counts.mostWaiters = Math.max(
+      this.counts.mostWaiters ?? 0,
+      this.waiters,
+    )
+    if (overCap(this.waiters, S.SIM_REVIEWER_CEILING))
+      this.fail(
+        S.INV_OVER_CAP,
+        `${this.waiters} reviews wait in the lane queue at once, past ${S.SIM_REVIEWER_CEILING}`,
+        `#${issue}`,
+      )
+    try {
+      return await lanes.wait()
+    } finally {
+      this.waiters--
+    }
+  }
+
+  /**
+   * A review with the lane queue (review_lanes.t27): its witness and criteria
+   * on no lane, WITNESS_PERCENT of its length; then its model call, on a lane
+   * it books, or waits for in the queue when none is free. A crash comes in
+   * the witness; a stall and a 429 come in the model call, holding the lane.
+   * Returns the fate it ended with, the lane it held, and whether its turn
+   * stopped it.
+   */
+  private async queuedReview(
+    issue: number,
+    a: number,
+    fate: Fate,
+    reservedKeys: () => number[],
+    onLane: (keyIndex: number | undefined) => void,
+    lanes: LaneGate,
+    held: (key: number) => void,
+    signal?: AbortSignal,
+  ): Promise<{ fate: Fate; stopped: boolean }> {
+    const whole = pickBetween(
+      this.roll(S.STREAM_ATTEMPT, a),
+      S.REVIEW_MIN_SECONDS * 1000,
+      S.REVIEW_MAX_SECONDS * 1000,
+    )
+    const witness = Math.floor((whole * S.WITNESS_PERCENT) / 100)
+    if (await this.pass(witness, signal)) return { fate, stopped: true }
+    if (fate === 'crash') return { fate, stopped: false }
+    let key = this.bookLane(issue, reservedKeys, onLane)
+    while (key === undefined) {
+      const answer = await this.laneWait(issue, lanes)
+      this.log(
+        `review #${issue} attempt ${a}: lane queue answers ${answer}`,
+        `#${issue}`,
+      )
+      if (answer === LANE_STOPPED) return { fate, stopped: true }
+      if (answer !== LANE_GO) return { fate: 'wait', stopped: false }
+      this.rare.add(S.RARE_LANE_WAITED)
+      key = this.bookLane(issue, reservedKeys, onLane)
+    }
+    held(key)
+    lanes.held()
+    const call =
+      fate === 'stall'
+        ? S.STALL_SECONDS * 1000
+        : fate === 'refused'
+          ? S.REFUSED_REVIEW_MS
+          : whole - witness
+    this.log(
+      `review #${issue} attempt ${a}: model call on lane ${key}, ${call} ms`,
+      `#${issue}`,
+    )
+    try {
+      return { fate, stopped: await this.pass(call, signal) }
+    } finally {
+      lanes.released()
+    }
+  }
+
   private async reviewOne(
     issue: number,
     reservedKeys: () => number[],
     onLane: (keyIndex: number | undefined) => void,
     signal?: AbortSignal,
+    lanes?: LaneGate,
   ): Promise<Judged> {
     const now = this.clock.now()
     const row = this.rows.get(issue)
+    this.reserved = reservedKeys
     this.visit(issue, now)
     this.startReview(issue)
     const a = this.attempts++
     let fate = this.fateOf(row, now)
-    // an unreadable row answers before any lane is taken; no free lane is a refusal
-    const key =
-      fate === 'wait' ? undefined : this.bookLane(issue, reservedKeys, onLane)
-    if (fate !== 'wait' && key === undefined) fate = 'refused'
-    const ms = this.lengthOf(fate, a)
     const process = this.reviewerProcess
-    this.log(
-      `review #${issue} attempt ${a}: ${fate}, ${ms} ms, lane ${key ?? '-'}`,
-      `#${issue}`,
-    )
     // a stopped turn aborts its review (turn_stop.t27): the model call ends at
     // once, as a transient refusal does, and the row is not judged
     let stopped = false
-    try {
-      await new Promise<void>((r) => {
-        const cancel = this.clock.after(ms, r)
-        const stop = () => {
-          stopped = true
-          cancel()
-          r()
-        }
-        if (signal?.aborted) stop()
-        else signal?.addEventListener('abort', stop, { once: true })
-      })
-    } finally {
-      if (process === this.reviewerProcess) this.endReview(issue, key)
+    let key: number | undefined
+    if (lanes && fate !== 'wait') {
+      this.log(
+        `review #${issue} attempt ${a}: ${fate}, in the lane queue's way`,
+        `#${issue}`,
+      )
+      try {
+        const out = await this.queuedReview(
+          issue,
+          a,
+          fate,
+          reservedKeys,
+          onLane,
+          lanes,
+          (k) => {
+            key = k
+          },
+          signal,
+        )
+        fate = out.fate
+        stopped = out.stopped
+      } finally {
+        if (process === this.reviewerProcess) this.endReview(issue, key)
+      }
+    } else {
+      // an unreadable row answers before any lane is taken; no free lane is a refusal
+      key =
+        fate === 'wait' ? undefined : this.bookLane(issue, reservedKeys, onLane)
+      if (fate !== 'wait' && key === undefined) fate = 'refused'
+      const ms = this.lengthOf(fate, a)
+      this.log(
+        `review #${issue} attempt ${a}: ${fate}, ${ms} ms, lane ${key ?? '-'}`,
+        `#${issue}`,
+      )
+      try {
+        stopped = await this.pass(ms, signal)
+      } finally {
+        if (process === this.reviewerProcess) this.endReview(issue, key)
+      }
     }
     if (stopped) {
       this.rare.add(S.RARE_REVIEW_STOPPED)
@@ -1066,7 +1096,7 @@ export class SimWorld {
   }
 
   private startReviewer(sys0: ActorSystem) {
-    const r = reviewerTree(sys0, this.reviewerDeps())
+    const r = reviewerTree(sys0, this.reviewerActorDeps())
     this.wake = r.wake
     supervisor(
       sys0,
@@ -1087,6 +1117,9 @@ export class SimWorld {
         this.reviewerProcess++
         this.reviewsOf.clear()
         this.keysHeld.clear()
+        // the old process's reservations went with it
+        this.reserved = undefined
+        this.unheldSince.clear()
         this.log('reviewer starts again in a new process')
         this.startReviewer(sys0)
       })
@@ -1238,20 +1271,40 @@ export class SimWorld {
   }
 
   /**
-   * Let the world's own scheduled work - a scheduler that yielded its slice,
-   * promises a step left settling - finish before the run closes, so none of
-   * it runs while the next world's taps are in place.
+   * Bees take keys: a new count every LANE_EPOCH_STEPS steps (bee_keys), the
+   * highest keys first, so reviews see lanes come and go.
    */
-  private async quiesce() {
-    let last = -1
-    this.quiescing = true
-    for (let i = 0; i < 1000 && (this.hash | 0) !== last; i++) {
-      last = this.hash | 0
-      this.count('quiesceRounds')
-      for (let k = 0; k < 3; k++)
-        await new Promise<void>((r) => setImmediate(r))
+  private beeKeysFor(epoch: number) {
+    const n = beeKeys(this.roll(S.STREAM_LANES, epoch))
+    this.beeKeys.clear()
+    for (let k = S.REVIEW_KEYS - 1; k >= S.REVIEW_KEYS - n; k--)
+      this.beeKeys.add(k)
+    this.log(`bees hold ${n} of ${S.REVIEW_KEYS} keys`)
+  }
+
+  /**
+   * Every key the reviewer reserves (its `reviewing` map, which it hands each
+   * review and the pool's capacity read) is held by a review that still runs,
+   * an abandoned one included. A key reserved with no review behind it for
+   * LANE_IDLE_SECONDS is a lane held by nobody: the pool counts it as taken,
+   * and no review may book it again.
+   */
+  private checkReserved() {
+    if (!this.reserved) return
+    const now = this.clock.now()
+    const unheld = new Map<number, number>()
+    for (const k of this.reserved()) {
+      if (this.keysHeld.has(k)) continue
+      const since = this.unheldSince.get(k) ?? now
+      unheld.set(k, since)
+      const s = Math.floor((now - since) / 1000)
+      if (laneHeldByNobody(s))
+        this.fail(
+          S.INV_LANE_LEAK,
+          `the reviewer has reserved lane ${k} for ${s} s with no review holding it`,
+        )
     }
-    this.quiescing = false
+    this.unheldSince = unheld
   }
 
   /** After a step: processes that ended without a word are marked ended. */
@@ -1268,6 +1321,18 @@ export class SimWorld {
     const untapReviewer = this.tap(REVIEWER_CARD, (n, a, r) =>
       this.onReviewerCall(n, a, r),
     )
+    // the pool's and the queue's cards: their decisions go into the log, and
+    // an idle worker the pool stops is a rare state
+    const untapSizing = this.tap(REVIEWER_SIZING_CARD, (n, a, r) => {
+      this.journal(n, a, r)
+      if (n === 'worker_retires' && r !== 0) this.rare.add(S.RARE_POOL_RETIRED)
+      return undefined
+    })
+    const untapLanes = this.tap(REVIEW_LANES_CARD, (n, a, r) => {
+      this.journal(n, a, r)
+      return undefined
+    })
+    const poolWorld = !!(this.options.adaptive || this.options.laneQueue)
     let ran = 0
     try {
       if (this.options.transport) this.transport = this.options.transport(this)
@@ -1285,6 +1350,8 @@ export class SimWorld {
       for (let step = 0; step < steps && !this.violation; step++) {
         this.step = step
         this.mix(step)
+        if (poolWorld && step % S.LANE_EPOCH_STEPS === 0)
+          this.beeKeysFor(step / S.LANE_EPOCH_STEPS)
         const event = stepEvent(this.roll(S.STREAM_STEP, step))
         this.apply(event, step, sys0)
         await this.clock.runUntil(
@@ -1292,6 +1359,7 @@ export class SimWorld {
         )
         await this.transport.settle?.()
         this.sweep()
+        this.checkReserved()
         // the clock moves in whole milliseconds; a fraction is a hidden input
         if (!Number.isInteger(this.clock.now())) this.count('fractionalClock')
         this.stepHashes.push(this.hash >>> 0)
@@ -1307,6 +1375,7 @@ export class SimWorld {
         await this.clock.runUntil(start + m * 60_000)
         await this.transport.settle?.()
         this.sweep()
+        this.checkReserved()
         this.stepHashes.push(this.hash >>> 0)
       }
       this.counts.tailEndMs = this.clock.now()
@@ -1334,38 +1403,11 @@ export class SimWorld {
       this.closed = true
       untapActors()
       untapReviewer()
+      untapSizing()
+      untapLanes()
       await this.transport?.stop?.()
       this.finalHash = hash
     }
-    return {
-      seed: this.seed,
-      steps: ran,
-      violation: this.violation,
-      stepHashes: this.stepHashes,
-      hash: this.finalHash,
-      rare: this.rare,
-      captured: this.captured,
-      afterTail: this.afterTail,
-      lines: this.ring.map(
-        (l) => `#${l.n} step ${l.step} t=${(l.t / 1000).toFixed(3)}s ${l.text}`,
-      ),
-      counts: this.counts,
-      tail: this.tail(),
-      ms: performance.now() - t0,
-    }
+    return this.result(ran, this.finalHash, performance.now() - t0)
   }
-}
-
-/** The report of a failed run: the seed, how to replay it, the minimal tail. */
-export function report(r: RunResult, replay: string): string {
-  const v = r.violation
-  if (!v) return `seed ${r.seed}: ok`
-  return [
-    `SIMULATION FAILED: ${INVARIANT_NAMES[v.inv]} (invariant ${v.inv})`,
-    `  seed ${r.seed}, step ${v.step}, t=${(v.t / 1000).toFixed(3)} s`,
-    `  ${v.text}`,
-    `  replay: ${replay}`,
-    `  log tail (the last lines that name ${v.subjects.join(', ') || 'anything'}):`,
-    ...r.tail,
-  ].join('\n')
 }

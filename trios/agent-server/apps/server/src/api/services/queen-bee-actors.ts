@@ -91,6 +91,7 @@ import {
   BE_SENT_BACK,
   BE_STARTED,
   BK_IDLE,
+  CL_STAND_DOWN,
   CL_START,
 } from './queen-keyed-card.gen'
 import {
@@ -354,11 +355,35 @@ export function beeDispatcher(sys: ActorSystem, deps: BeeDispatchDeps) {
       if (lane !== undefined) giveBack(issue, lane)
       lane = undefined
     }
+    // the lane is still this issue's while the board names its token for it
+    const laneHeld = () => lane !== undefined && board.lanes.get(issue) === lane
 
     const move = (ev: number): boolean => {
       if (kc('bee_key_acts', state, ev) === 0) return false
       state = kc('bee_key_next', state, ev)
       return true
+    }
+
+    // A start that keeps no lane (claim_step): a bee it started is stopped,
+    // since a bee runs only on a lane it keeps, and the lane goes back at
+    // once. A lost claim does not poll: it tries again when the holder's
+    // lease can have lapsed, or sooner when an event names this key.
+    const noStart = (s: BeeStart, step: number) => {
+      if (step !== CL_START) s.work?.cancel()
+      giveLaneBack()
+      move(BE_REFUSED)
+      if (step !== CL_STAND_DOWN) return
+      stats.standDowns++
+      deps.observe?.({ kind: 'stood-down', issue })
+      const wait = kc(
+        'retry_after_lost_seconds',
+        u32(s.holderSinceRenewal ?? 0),
+        LEASE_TTL_SECONDS,
+      )
+      retry?.()
+      retry = clock.after(wait * 1000, () =>
+        issues.send(issue, { kind: 'ready' }),
+      )
     }
 
     const admitAndStart = async (self: Pid) => {
@@ -390,26 +415,16 @@ export function beeDispatcher(sys: ActorSystem, deps: BeeDispatchDeps) {
       const s = await deps
         .start(issue, holder)
         .catch((): BeeStart => ({ claim: false, work: null }))
-      const step2 = kc('claim_step', 1, flag(s.claim))
-      if (kc('keeps_lane', step2) === 0 || !s.work) {
-        // a lost claim, or nothing started: the lane goes back at once
-        giveLaneBack()
-        move(BE_REFUSED)
-        if (step2 !== CL_START) {
-          stats.standDowns++
-          deps.observe?.({ kind: 'stood-down', issue })
-          const wait = kc(
-            'retry_after_lost_seconds',
-            u32(s.holderSinceRenewal ?? 0),
-            LEASE_TTL_SECONDS,
-          )
-          retry?.()
-          retry = clock.after(wait * 1000, () =>
-            issues.send(issue, { kind: 'ready' }),
-          )
-        }
-        return
-      }
+      // THE LANE AS THE BOARD HAS IT NOW, NOT AS IT WAS BEFORE THE AWAIT. While
+      // the claim was out this actor's pid may have died, and its exit gave
+      // the lane back (lane_outlives_holder: no bee ran yet), so another issue
+      // may hold it now. claim_step was asked with the lane taken whatever
+      // became of it, and a landed claim then started a bee on no lane: the
+      // simulation gate's keyed world found a dispatcher running 5 bees on 4
+      // lanes (seed 1072413183, trios#1763). Asked with the truth, the card
+      // answers CL_NO_LANE, and the bee that claim started is stopped.
+      const step2 = kc('claim_step', flag(laneHeld()), flag(s.claim))
+      if (kc('keeps_lane', step2) === 0 || !s.work) return noStart(s, step2)
       const w = s.work
       work = w
       end = undefined
