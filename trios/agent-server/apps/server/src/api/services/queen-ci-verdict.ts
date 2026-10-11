@@ -42,6 +42,8 @@
 import type { Pool } from 'pg'
 import { logger } from '../../lib/logger'
 import { publishEvent } from './queen-control'
+import { acceptClaim, freeClosedPrEnabled } from './queen-holds'
+import { CL_FREE } from './queen-holds.gen'
 import { PR_FIX_ATTEMPTS, REVIEWER_LOGIN } from './queen-review-valve'
 
 /** Accepted issues asked about per round. Two GitHub reads each, plus a log per red check. */
@@ -171,14 +173,79 @@ export interface CiDeps {
 export interface TakenBack {
   issue: number
   pull: number
-  state: 'sendBack' | 'escalate'
+  /** `failed`: every pull request of the branch closed unmerged (TRIOS_QUEEN_FREE_CLOSED_PR). */
+  state: 'sendBack' | 'escalate' | 'failed'
   checks: string[]
 }
+
+/** The note the next bee reads when its predecessor's pull request was closed unmerged. */
+export function closedPullNote(pull: number, branch: string): string {
+  return (
+    `Pull request #${pull} for ${branch} was closed without merging, and no ` +
+    'pull request of the branch is open or merged. The accepted work will ' +
+    'not land, so the issue is free for a fresh attempt (gHashTag/t27 ' +
+    'specs/queen/holds.t27 accept_claim).'
+  )
+}
+
+/**
+ * TRIOS_QUEEN_FREE_CLOSED_PR=on (off by default: false, and nothing read or
+ * written). An accept whose branch has only pull requests closed unmerged is
+ * not done: nothing will land it, and it read as "the work already landed"
+ * for the whole 7-day window (#4374 and #6414 on 2026-10-11). The card decides
+ * (holds.t27 accept_claim): open or merged keeps the accept, and no pull
+ * request at all keeps it too - that work waits in the export. Guarded on the
+ * state it read, so a review that moved the row meanwhile is never
+ * overwritten. True when the row is done with for this round: freed (and
+ * added to `taken`), or moved by someone else.
+ */
+async function freeIfPullsClosed(
+  pool: Pool,
+  issue: number,
+  branch: string,
+  pulls: PullRequest[] | null,
+  taken: TakenBack[],
+  env: Record<string, string | undefined>,
+): Promise<boolean> {
+  if (!freeClosedPrEnabled(env)) return false
+  const all = pulls ?? []
+  const closed = all.filter((p) => p.state === 'closed' && !p.merged)
+  const claim = acceptClaim(
+    pulls !== null,
+    all.filter((p) => p.state === 'open' && !p.merged).length,
+    all.filter((p) => p.merged).length,
+    closed.length,
+  )
+  if (claim !== CL_FREE) return false
+  const pull = newestNumber(closed)
+  const updated = await pool.query(
+    `UPDATE queen_dispatch
+        SET review_state = 'failed', review_note = $2, judged_note = $2,
+            reviewed_at = now()
+      WHERE issue = $1 AND review_state = 'accept'`,
+    [issue, closedPullNote(pull, branch)],
+  )
+  if (!updated.rowCount) return true
+  await publishEvent(pool, 'queen/task.reviewed', {
+    issue,
+    verdict: 'failed',
+  }).catch(() => 0)
+  logger.info('Queen freed an acceptance whose pull request closed', {
+    issue,
+    pull,
+  })
+  taken.push({ issue, pull, state: 'failed', checks: [] })
+  return true
+}
+
+const newestNumber = (pulls: PullRequest[]): number =>
+  Math.max(...pulls.map((p) => p.number))
 
 export async function takeBackRefusedAcceptances(
   pool: Pool,
   deps: CiDeps,
   limit = CI_CHECKS_PER_ROUND,
+  env: Record<string, string | undefined> = process.env,
 ): Promise<TakenBack[]> {
   const required = await deps.requiredChecks()
   if (!required || required.length === 0) return []
@@ -215,6 +282,11 @@ export async function takeBackRefusedAcceptances(
     )
 
     const pulls = await deps.pullsForBranch(branch)
+    // A PULL REQUEST CLOSED UNMERGED TAKES THE ACCEPTANCE BACK (holds.t27
+    // accept_claim, t27#9111, behind TRIOS_QUEEN_FREE_CLOSED_PR), read from
+    // the list this loop already fetched: no GitHub call is added.
+    if (await freeIfPullsClosed(pool, issue, branch, pulls, taken, env))
+      continue
     const open = pulls?.find((p) => p.state === 'open' && !p.merged)
     if (!open) continue
     const runs = await deps.checkRuns(open.headSha)
