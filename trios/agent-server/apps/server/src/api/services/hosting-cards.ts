@@ -354,6 +354,10 @@ export const runVerdict = (f: RunFacts): number =>
 export const listsTests = (verdict: number): boolean =>
   yes(proof().call('lists_tests', verdict & 0xff))
 
+/** Whether a reference verdict says something about the spec (proof.t27). */
+export const verdictVotes = (verdict: number): boolean =>
+  yes(proof().call('verdict_votes', verdict & 0xff))
+
 export const reasonOf = (
   verdict: number,
   exitedZero: boolean,

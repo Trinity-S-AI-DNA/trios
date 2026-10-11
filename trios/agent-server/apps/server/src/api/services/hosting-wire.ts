@@ -465,6 +465,15 @@ export function assembleRow(
   reference: Stated,
   t27b: Stated,
 ): Record<string, unknown> {
+  return rowOfParts(file, referencePartOf(reference), t27b.row ?? {})
+}
+
+/**
+ * The reference half's keys of a row (feed.t27 REFERENCE_PART_KEYS) from its
+ * agreed output: the verdict, its reason or fail count (row.t27 detail_kind),
+ * and its per-test verdicts when every test is listed.
+ */
+export function referencePartOf(reference: Stated): Record<string, unknown> {
   const refCode = VERDICT_WORDS.indexOf(reference.word as never)
   const kind = detailKind(refCode < 0 ? 255 : refCode)
   let detail = ''
@@ -473,37 +482,62 @@ export function assembleRow(
   else if (kind === DETAIL_REASON) detail = reference.reason ?? ''
   else if (kind === DETAIL_TIMEOUT)
     detail = `${DETAIL_TIMEOUT_WORDS[0]}${JOB_RUN_BOUND_SECONDS}${DETAIL_TIMEOUT_WORDS[1]}`
-  const t = t27b.row ?? {}
-  const values: Record<string, unknown> = {
-    ...t,
-    file,
+  const part: Record<string, unknown> = {
     reference: reference.word,
     reference_detail: detail,
   }
   const listed = reference.results ?? []
-  const refTests = referenceTestsListed(
-    refCode < 0 ? 255 : refCode,
-    listed.length,
-    reference.tests,
-  )
-  const refVerdicts: Record<string, boolean> = {}
-  for (const r of listed) refVerdicts[r.name] = r.passed
-  if (refTests) values.reference_tests = refVerdicts
-  const t27bVerdicts =
-    t.test_verdicts && typeof t.test_verdicts === 'object'
-      ? (t.test_verdicts as Record<string, boolean>)
+  if (
+    referenceTestsListed(
+      refCode < 0 ? 255 : refCode,
+      listed.length,
+      reference.tests,
+    )
+  ) {
+    const verdicts: Record<string, boolean> = {}
+    for (const r of listed) verdicts[r.name] = r.passed
+    part.reference_tests = verdicts
+  }
+  return part
+}
+
+/**
+ * A row from its two halves' keys, however each half came (agreed now, or
+ * carried from an earlier receipt: feed.t27 section 4). reference_disagree is
+ * recomputed from the two, never carried.
+ */
+export function rowOfParts(
+  file: string,
+  referencePart: Record<string, unknown>,
+  t27bPart: Record<string, unknown>,
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {
+    ...t27bPart,
+    file,
+    reference: referencePart.reference,
+    reference_detail: referencePart.reference_detail ?? '',
+  }
+  const refVerdicts =
+    referencePart.reference_tests &&
+    typeof referencePart.reference_tests === 'object'
+      ? (referencePart.reference_tests as Record<string, boolean>)
       : null
-  if (disagreeListed(t27bVerdicts !== null, refTests)) {
+  if (refVerdicts) values.reference_tests = refVerdicts
+  const t27bVerdicts =
+    t27bPart.test_verdicts && typeof t27bPart.test_verdicts === 'object'
+      ? (t27bPart.test_verdicts as Record<string, boolean>)
+      : null
+  if (disagreeListed(t27bVerdicts !== null, refVerdicts !== null)) {
     const lines: string[] = []
     const names = [
       ...new Set([
         ...Object.keys(t27bVerdicts ?? {}),
-        ...Object.keys(refVerdicts),
+        ...Object.keys(refVerdicts ?? {}),
       ]),
     ].sort()
     for (const name of names) {
       const a = t27bVerdicts?.[name]
-      const b = refVerdicts[name]
+      const b = refVerdicts?.[name]
       const line = disagreement(
         a !== undefined,
         a === true,
