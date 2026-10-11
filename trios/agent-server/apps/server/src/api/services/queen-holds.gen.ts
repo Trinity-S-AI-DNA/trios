@@ -12,6 +12,22 @@ export const HOLD_STAGES = 5 satisfies number;
 export const AWAITING_HOLD_MINUTES = 30 satisfies number;
 export const SEND_BACK_HOLD_MINUTES = 120 satisfies number;
 // t27c gen-ts: fn holds_files was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn holds_files_now was not emitted -- this backend lowers declarations, not bodies.
+export const HP_APART = 0 satisfies number;
+export const HP_STORED = 1 satisfies number;
+export const HP_CURRENT = 2 satisfies number;
+// t27c gen-ts: fn path_from was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn path_to was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn path_within was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn held_part was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -19,7 +35,7 @@ export const SEND_BACK_HOLD_MINUTES = 120 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["HS_WORKING", "HS_SEND_BACK", "HS_AWAITING", "HS_ESCALATED", "HS_DONE", "HOLD_STAGES", "AWAITING_HOLD_MINUTES", "SEND_BACK_HOLD_MINUTES"] as const;
+export const __DECL_ORDER__ = ["HS_WORKING", "HS_SEND_BACK", "HS_AWAITING", "HS_ESCALATED", "HS_DONE", "HOLD_STAGES", "AWAITING_HOLD_MINUTES", "SEND_BACK_HOLD_MINUTES", "HP_APART", "HP_STORED", "HP_CURRENT"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not
