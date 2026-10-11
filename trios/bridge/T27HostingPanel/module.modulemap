@@ -1,0 +1,9 @@
+// The hosting card (gHashTag/t27 specs/hosting/panel.t27) as a Clang module.
+// `make hosting-card` generates the C with `t27c gen-c`, cuts its constants and
+// prototypes into the header, and compiles the rest into the library. Neither
+// is committed. See the Makefile, "The hosting card".
+module T27HostingPanel {
+    header "../../.trinity/build/t27/T27HostingPanel/hosting_panel.h"
+    link "T27HostingPanel"
+    export *
+}

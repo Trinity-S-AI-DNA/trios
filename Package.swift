@@ -1,5 +1,13 @@
 // swift-tools-version:5.9
+import Foundation
 import PackageDescription
+
+// The hosting card's library is a build product of `make hosting-card`
+// (trios/Makefile, "The hosting card"); the linker finds it by this path.
+let hostingCardLibrary = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent("trios/.trinity/build/t27/T27HostingPanel")
+    .path
 
 let package = Package(
     name: "TriOS",
@@ -13,9 +21,15 @@ let package = Package(
             pkgConfig: "sqlcipher",
             providers: [.brew(["sqlcipher"])]
         ),
+        // gHashTag/t27 specs/hosting/panel.t27 through `t27c gen-c`: the module
+        // map is committed, the header and library it names are generated.
+        .systemLibrary(
+            name: "T27HostingPanel",
+            path: "trios/bridge/T27HostingPanel"
+        ),
         .target(
             name: "TriOSKit",
-            dependencies: ["CSQLCipher"],
+            dependencies: ["CSQLCipher", "T27HostingPanel"],
             path: "trios",
             sources: [
                 // ONE LIST, READ RATHER THAN COPIED.
@@ -52,6 +66,7 @@ let package = Package(
                 "BR-OUTPUT/GitHubModels.swift",
                 "BR-OUTPUT/GitWorkspaceView.swift",
                 "BR-OUTPUT/GlassmorphismBackground.swift",
+                "BR-OUTPUT/HostingPanelView.swift",
                 "BR-OUTPUT/HotkeyBar.swift",
                 "BR-OUTPUT/LLMClient.swift",
                 "BR-OUTPUT/LogsTabView.swift",
@@ -140,6 +155,7 @@ let package = Package(
                 .linkedLibrary("sqlcipher"),
                 .linkedFramework("Security"),
                 .linkedFramework("CryptoKit"),
+                .unsafeFlags(["-L\(hostingCardLibrary)"]),
             ]
         ),
         .testTarget(
