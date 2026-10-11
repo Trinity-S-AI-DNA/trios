@@ -78,6 +78,14 @@ import {
   stepAfter,
 } from './queen-jobs-rules'
 import {
+  defaultNetworkIo,
+  NETWORK_JOB_CARD,
+  type NetworkIo,
+  networkExecutors,
+  networkJobsOn,
+  stepEvent,
+} from './queen-network-job'
+import {
   cancelWaitsOf,
   checkAfterSeconds,
   createWait,
@@ -112,12 +120,19 @@ export interface JobCard {
   stepKind: number[]
   stepWhat: string[]
   publishStep: number
+  /** Every constant of the card, for the executors of a card other than release-t27c. */
+  consts: Record<string, unknown>
 }
 
 /** Cards the Queen may run, by name -> vendored file. A closed list. */
 export const JOB_CARDS: Record<string, string> = {
   'release-t27c': 'jobs/release_t27c.t27',
+  // gHashTag/t27 specs/jobs/network_job.t27: one network job, receipts to a test credit
+  'network-job': 'jobs/network_job.t27',
 }
+
+/** The cards whose release constants are required (the others need not carry them). */
+const RELEASE_CARDS = new Set(['release-t27c'])
 
 const cardCache = new Map<string, Promise<JobCard>>()
 
@@ -159,20 +174,24 @@ export async function loadJobCard(
       if (!Array.isArray(v)) throw new Error(`${file}: ${k} is missing`)
       return v
     }
+    const release = RELEASE_CARDS.has(name)
     const card: JobCard = {
       name: str('JOB_NAME'),
       file,
       repo: str('REPO'),
       baseBranch: str('BASE_BRANCH'),
-      crate: str('CRATE'),
-      tagPrefix: str('TAG_PREFIX'),
-      releaseWorkflow: str('RELEASE_WORKFLOW'),
-      cargoManifest: str('CARGO_MANIFEST'),
-      zenodoFile: str('ZENODO_FILE'),
+      crate: release ? str('CRATE') : '',
+      tagPrefix: release ? str('TAG_PREFIX') : '',
+      releaseWorkflow: release ? str('RELEASE_WORKFLOW') : '',
+      cargoManifest: release ? str('CARGO_MANIFEST') : '',
+      zenodoFile: release ? str('ZENODO_FILE') : '',
       params: list('PARAMS').map(String),
       stepKind: list('STEP_KIND').map(Number),
       stepWhat: list('STEP_WHAT').map(String),
       publishStep: num('PUBLISH_STEP'),
+      consts: Object.fromEntries(
+        Object.entries(a.consts).map(([k, v]) => [k, v.value]),
+      ),
     }
     const count = num('STEP_COUNT')
     if (card.name !== name)
@@ -225,6 +244,13 @@ export async function startJob(
   /** The issue that asked for the job, kept in its params (one job per issue). */
   fromIssue?: number,
 ): Promise<StartResult> {
+  // both start paths (POST /queen/jobs and startJobsFromIssues) come here
+  if (cardName === NETWORK_JOB_CARD && !networkJobsOn())
+    return {
+      ok: false,
+      status: 409,
+      error: `the ${NETWORK_JOB_CARD} card is off in this deployment (TRIOS_QUEEN_NETWORK_JOBS is not on)`,
+    }
   let card: JobCard
   try {
     card = await loadJobCard(cardName)
@@ -412,6 +438,8 @@ export interface JobIo {
   ) => Promise<{ status: number; body: unknown }>
   /** Whether the release credential exists in this deployment. */
   hasReleaseToken: () => boolean
+  /** The network job's lab I/O (queen-network-job.ts); defaults to the real one. */
+  network?: NetworkIo
 }
 
 const UA = 't27-queen (github.com/gHashTag/t27)'
@@ -765,6 +793,39 @@ export const EXECUTORS: Record<string, Executor> = {
       detail: `${card.crate} ${job.params.version} is not on the registry yet`,
     }
   },
+}
+
+/** The network job's steps (queen-network-job.ts), adapted to this file's Executor. */
+for (const what of [
+  'job-commit',
+  'lab-challenge',
+  'lab-receipts',
+  'receipts-verified',
+  'quorum',
+  'settle-credit',
+  'challenge-window',
+]) {
+  EXECUTORS[what] = async ({ job, card, io, pool, now }) => {
+    const at = now ?? Date.now()
+    await stepEvent(pool, true, card.repo, job.id, what, -1, at)
+    const exec = networkExecutors(io.network ?? defaultNetworkIo(io.get))[what]
+    const answer = await exec({
+      job,
+      card: { repo: card.repo, consts: card.consts },
+      pool,
+      now: at,
+    })
+    await stepEvent(
+      pool,
+      false,
+      card.repo,
+      job.id,
+      what,
+      answer.outcome,
+      Date.now(),
+    )
+    return answer
+  }
 }
 
 async function readEffect(

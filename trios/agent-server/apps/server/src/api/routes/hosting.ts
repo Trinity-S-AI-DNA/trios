@@ -117,6 +117,16 @@ function defaultQueen(): HostingQueen | null {
 }
 
 /**
+ * The process's one hosting Queen, the routes' own, for a source in this
+ * process that records work in the same ledger (queen-network-job.ts, through
+ * recordWork): one epoch closer per process, never a second instance over the
+ * same store. null without a database.
+ */
+export function hostingQueen(): HostingQueen | null {
+  return defaultQueen()
+}
+
+/**
  * The network a request came from, hashed: the last X-Forwarded-For entry
  * (the one the platform's proxy appended), cut to its prefix (placement.t27
  * ORIGIN_*_PREFIX_BITS). The address itself is personal data and never kept.

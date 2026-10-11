@@ -77,3 +77,17 @@ export class VirtualClock implements Clock {
     await settle()
   }
 }
+
+/**
+ * A virtual clock whose timers fire 1 ms before their time, as the host's do:
+ * Bun's setTimeout(fn, 3000) can run when Date.now() says 2997-2999 ms have
+ * passed (trios#1766, 27 of 100 grace timers in one run under a CPU burner).
+ * A 1 ms timer still waits its 1 ms, so time always moves on.
+ */
+export class EarlyClock extends VirtualClock {
+  constructor() {
+    super()
+    const on = this.after
+    this.after = (ms, fn) => on(ms > 1 ? ms - 1 : ms, fn)
+  }
+}

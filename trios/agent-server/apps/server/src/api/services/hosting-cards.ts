@@ -29,6 +29,7 @@
 
 import { basename, dirname } from 'node:path'
 import { type CardWasm, flag, loadCardWasm, u32, u64 } from './queen-card-wasm'
+import { TIER_PUBLIC } from './queen-hosting-host-card.gen'
 
 export const HOSTING_CARDS = {
   host: 'hosting/host.wasm',
@@ -628,6 +629,45 @@ export const voteCredit = (
     ),
   )
 
+// Rule 6 (gHashTag/t27#8853): an operator is credited once per job. The card
+// takes the tiers of a job's agreeing receipts, by arrival; every owner-tier
+// key is one operator (network/quorum.t27 OPERATOR_OWNER).
+
+/** REPLICAS_MAX tiers; a slot past the job's receipts is never read by the card. */
+const tiersOf = (tiers: readonly number[]): [number, number, number] => [
+  (tiers[0] ?? TIER_PUBLIC) & 0xff,
+  (tiers[1] ?? TIER_PUBLIC) & 0xff,
+  (tiers[2] ?? TIER_PUBLIC) & 0xff,
+]
+
+export const operatorFirst = (
+  tiers: readonly number[],
+  index: number,
+): boolean => yes(sybil().call('operator_first', ...tiersOf(tiers), u32(index)))
+
+export const operatorsOf = (tiers: readonly number[], count: number): number =>
+  sybil().call('operators_of', ...tiersOf(tiers), u32(count)) >>> 0
+
+export const operatorCredit = (
+  firstOfOperator: boolean,
+  side: number,
+  alreadyCredited: boolean,
+  agreedBefore: number,
+  earnedThisEpoch: number,
+  cap: bigint,
+): number =>
+  Number(
+    sybil().call64(
+      'operator_credit',
+      flag(firstOfOperator),
+      side & 0xff,
+      flag(alreadyCredited),
+      u32(agreedBefore),
+      u64(earnedThisEpoch),
+      BigInt.asIntN(64, cap),
+    ),
+  )
+
 export const slashDue = (
   wrongCanary: boolean,
   side: number,
@@ -679,6 +719,23 @@ export const sybilTotal = (
 ): number =>
   Number(
     sybil().call64('sybil_total', u32(attackers), u32(defenses), what & 0xff),
+  )
+
+/** The same sum in the owner's world, both anchors his (sybil_world_total). */
+export const sybilWorldTotal = (
+  attackers: number,
+  defenses: number,
+  ownerAnchors: boolean,
+  what: number,
+): number =>
+  Number(
+    sybil().call64(
+      'sybil_world_total',
+      u32(attackers),
+      u32(defenses),
+      flag(ownerAnchors),
+      what & 0xff,
+    ),
   )
 
 // --- statement.t27 (slice 1b) -----------------------------------------------

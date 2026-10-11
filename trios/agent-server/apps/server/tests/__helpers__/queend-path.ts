@@ -3,8 +3,8 @@
  *
  * Production resolves it in `queendPath()` inside `queen-tick.ts`: an
  * environment variable first, then the path the container installs it at.
- * The api suites used to restate a third answer of their own — a path
- * hard-coded relative to each test file — so on every CI run and on the
+ * The api suites used to restate a third answer of their own - a path
+ * hard-coded relative to each test file - so on every CI run and on the
  * deployed container every parity case silently skipped, and a test file
  * that copied the hard-coding looked normal. This helper is the only place
  * outside `queen-tick.ts` allowed to know the spellings: the variable name
@@ -73,7 +73,7 @@ export function queendPathEnvVar(queenTickPath: string = QUEEN_TICK_PATH) {
 }
 
 /**
- * The fallback literal `queendPath()` returns when the variable is unset —
+ * The fallback literal `queendPath()` returns when the variable is unset -
  * where the container installs the binary. Throws when it cannot be found,
  * because a test that cannot state the production answer must fail, not
  * pass on a guess.
@@ -109,11 +109,11 @@ export function containerQueendPath(
  * it, in the same order:
  *
  *   1. the environment variable `queendPath()` reads, returned unchanged
- *      and untrimmed when it is a non-empty string — an operator's explicit
+ *      and untrimmed when it is a non-empty string - an operator's explicit
  *      pointer is trusted before the filesystem is consulted at all;
  *   2. the container fallback, when it exists on this machine;
  *   3. the repository-local release build, which on a machine without a
- *      build does not exist — so the `skipIf` / `it.if` gates stay honest
+ *      build does not exist - so the `skipIf` / `it.if` gates stay honest
  *      instead of the resolver inventing a path to force cases to run.
  */
 export function resolveQueendPath(): string {

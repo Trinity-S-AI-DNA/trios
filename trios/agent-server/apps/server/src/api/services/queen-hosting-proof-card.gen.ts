@@ -59,7 +59,6 @@ export const JV_AGREED = 1 satisfies number;
 export const JV_TIEBREAK = 2 satisfies number;
 export const JV_UNRESOLVED = 3 satisfies number;
 export const FAULTS_ASSUMED = 0 satisfies number;
-// t27c gen-ts: fn quorum_needed was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn job_verdict was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn wanted_after was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn job_closed was not emitted -- this backend lowers declarations, not bodies.
@@ -81,13 +80,17 @@ export const TOP_GROUP = 0 satisfies number;
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+export const TRUSTED_F = 1 satisfies number;
+export const TRUSTED_M = 3 satisfies number;
+export const TRUSTED_N = 4 satisfies number;
+// t27c gen-ts: fn safe_m was not emitted -- this backend lowers declarations, not bodies.
 export const KEY_ID_HEX_LEN = 16 satisfies number;
 export const NONCE_MIN_BYTES = 16 satisfies number;
 export const FAIL = 1 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["SHARD_DOMAIN", "SHARD_COUNT_KEYS", "SHARD_SPEC_KEY", "SHARD_VERDICT_KEY", "SHARD_TEST_KEY", "VERDICT_WORDS", "VW_PASS", "VW_FAIL", "VW_BLOCKED", "VW_TIMEOUT", "VW_HOST_ERROR", "VERDICTS", "SHARD_REASON_KEY", "REASON_MAX_BYTES", "REASON_EXIT_WORDS", "REASON_UNREADABLE", "REASON_WITHHELD", "RS_NONE", "RS_EXIT", "RS_BLOCKED_LINE", "RS_UNREADABLE", "RECEIPT_DOMAIN", "RECEIPT_SIGNED_FIELDS", "RECEIPT_SIGNED_FIELD_COUNT", "LEASE_NONCE_BYTES", "REQUEST_DOMAIN", "REQUEST_SIGNED_FIELDS", "REGISTER_DOMAIN", "REGISTER_SIGNED_FIELDS", "RC_OK", "RC_UNKNOWN_HOST", "RC_BAD_SIGNATURE", "RC_NOT_LEASED", "RC_DUPLICATE", "RC_EQUIVOCATION", "RC_LATE", "RC_INPUT_MISMATCH", "RC_MODEL_MISMATCH", "RC_OUTPUT_MISMATCH", "REPLICAS_K", "REPLICAS_MAX", "JV_PENDING", "JV_AGREED", "JV_TIEBREAK", "JV_UNRESOLVED", "FAULTS_ASSUMED", "SIDE_AGREED", "SIDE_DISSENT", "SIDE_NONE", "TOP_GROUP", "KEY_ID_HEX_LEN", "NONCE_MIN_BYTES", "FAIL"] as const;
+export const __DECL_ORDER__ = ["SHARD_DOMAIN", "SHARD_COUNT_KEYS", "SHARD_SPEC_KEY", "SHARD_VERDICT_KEY", "SHARD_TEST_KEY", "VERDICT_WORDS", "VW_PASS", "VW_FAIL", "VW_BLOCKED", "VW_TIMEOUT", "VW_HOST_ERROR", "VERDICTS", "SHARD_REASON_KEY", "REASON_MAX_BYTES", "REASON_EXIT_WORDS", "REASON_UNREADABLE", "REASON_WITHHELD", "RS_NONE", "RS_EXIT", "RS_BLOCKED_LINE", "RS_UNREADABLE", "RECEIPT_DOMAIN", "RECEIPT_SIGNED_FIELDS", "RECEIPT_SIGNED_FIELD_COUNT", "LEASE_NONCE_BYTES", "REQUEST_DOMAIN", "REQUEST_SIGNED_FIELDS", "REGISTER_DOMAIN", "REGISTER_SIGNED_FIELDS", "RC_OK", "RC_UNKNOWN_HOST", "RC_BAD_SIGNATURE", "RC_NOT_LEASED", "RC_DUPLICATE", "RC_EQUIVOCATION", "RC_LATE", "RC_INPUT_MISMATCH", "RC_MODEL_MISMATCH", "RC_OUTPUT_MISMATCH", "REPLICAS_K", "REPLICAS_MAX", "JV_PENDING", "JV_AGREED", "JV_TIEBREAK", "JV_UNRESOLVED", "FAULTS_ASSUMED", "SIDE_AGREED", "SIDE_DISSENT", "SIDE_NONE", "TOP_GROUP", "TRUSTED_F", "TRUSTED_M", "TRUSTED_N", "KEY_ID_HEX_LEN", "NONCE_MIN_BYTES", "FAIL"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

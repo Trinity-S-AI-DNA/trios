@@ -11,6 +11,9 @@
  *     with the rules off (slice 1) they do, on the same input;
  *   - canaries: a wrong answer to a known answer is slashed and struck at once;
  *   - probation and the cap; credits named by kind;
+ *   - one credit per operator (rule 6, gHashTag/t27#8853): the owner's two
+ *     keys on one job are credited once, and the simulation's tables do not
+ *     move where every key is its own operator;
  *   - the epoch statement: signed, chained, and a host verifies its own leaf;
  *     a tampered leaf, path or statement fails by name;
  *   - no ledger key: every epoch stays open and unsigned, and the log names the
@@ -78,12 +81,17 @@ import {
 import {
   CAP_PUBLIC_MTRI,
   D_ALL,
+  D_ANCHOR_PER_OPERATOR,
   D_NO_ANCHOR_NO_CANARY,
+  D_OPERATOR,
   D_SLICE1,
   PROBATION_JOBS,
   SIM_SEEDS,
+  SR_ANCHOR_MTRI,
   SR_ATTACKER_MTRI,
+  SR_ATTACKERS_SUSPENDED,
   SR_HONEST_MTRI,
+  SR_JOBS_AGREED,
   SR_WRONG_AGREED,
 } from '../../src/api/services/queen-hosting-sybil-card.gen'
 import { DEFAULT_SPECS_ROOT } from '../../src/inngest/spec-catalog'
@@ -144,6 +152,34 @@ describe('the slice 1b cards', () => {
     expect(
       cards.voteCredit(SIDE_AGREED, false, PROBATION_JOBS, 5, 2n ** 64n - 1n),
     ).toBe(1)
+    // rule 6: the owner's keys are one operator, credited once per job
+    expect(cards.operatorFirst([TIER_OWNER, TIER_OWNER], 0)).toBe(true)
+    expect(cards.operatorFirst([TIER_OWNER, TIER_OWNER], 1)).toBe(false)
+    expect(cards.operatorFirst([TIER_OWNER, TIER_PUBLIC], 1)).toBe(true)
+    expect(cards.operatorFirst([TIER_OWNER, TIER_TRUSTED, TIER_OWNER], 2)).toBe(
+      false,
+    )
+    expect(cards.operatorsOf([TIER_OWNER, TIER_OWNER, TIER_TRUSTED], 3)).toBe(2)
+    expect(
+      cards.operatorCredit(
+        true,
+        SIDE_AGREED,
+        false,
+        PROBATION_JOBS,
+        0,
+        2n ** 64n - 1n,
+      ),
+    ).toBe(1)
+    expect(
+      cards.operatorCredit(
+        false,
+        SIDE_AGREED,
+        false,
+        PROBATION_JOBS,
+        0,
+        2n ** 64n - 1n,
+      ),
+    ).toBe(0)
     expect(cards.shardKind(false, 0)).toBe(EXECUTOR_FEE)
     expect(cards.shardKind(false, 1)).toBe(VERIFIER_FEE)
     expect(cards.shardKind(true, 0)).toBe(VERIFIER_FEE)
@@ -211,6 +247,65 @@ describe('the sybil simulation (sybil.t27), printed from the card', () => {
       expect(cards.sybilTotal(m, D_SLICE1, SR_ATTACKER_MTRI)).toBeGreaterThan(0)
     // one key alone never forms a quorum
     expect(cards.sybilTotal(1, D_SLICE1, SR_ATTACKER_MTRI)).toBe(0)
+  })
+
+  // gHashTag/t27#8853: rule 6 and the anchored verdict, before and after
+  const pair = (a: number, b: number) =>
+    `${(a / SIM_SEEDS).toFixed(3)} / ${(b / SIM_SEEDS).toFixed(3)}`
+  const owner = (m: number, d: number, w: number) =>
+    cards.sybilWorldTotal(m, d, true, w)
+
+  it("moves no number of the one-key world with rule 6, and pays the attacker nothing in the owner's", () => {
+    for (const m of M)
+      for (const w of [SR_ATTACKER_MTRI, SR_HONEST_MTRI, SR_WRONG_AGREED]) {
+        expect(cards.sybilTotal(m, D_ALL, w)).toBe(
+          cards.sybilTotal(m, D_ALL - D_OPERATOR, w),
+        )
+        expect(cards.sybilTotal(m, D_NO_ANCHOR_NO_CANARY, w)).toBe(
+          cards.sybilTotal(m, D_NO_ANCHOR_NO_CANARY - D_OPERATOR, w),
+        )
+      }
+    console.log(
+      [
+        `the owner's world, both anchors his: rule 6 off (${D_ALL - D_OPERATOR}) / on (${D_ALL}), mean of ${SIM_SEEDS} seeds per run`,
+        '| M | anchor hosts mTRI | attacker mTRI | honest mTRI | wrong results agreed |',
+        '|---|---|---|---|---|',
+        ...M.map(
+          (m) =>
+            `| ${m} | ${[SR_ANCHOR_MTRI, SR_ATTACKER_MTRI, SR_HONEST_MTRI, SR_WRONG_AGREED].map((w) => pair(owner(m, D_ALL - D_OPERATOR, w), owner(m, D_ALL, w))).join(' | ')} |`,
+        ),
+      ].join('\n'),
+    )
+    for (const m of M) {
+      expect(owner(m, D_ALL, SR_ATTACKER_MTRI)).toBe(0)
+      expect(owner(m, D_ALL, SR_WRONG_AGREED)).toBe(0)
+      expect(owner(m, D_ALL, SR_ANCHOR_MTRI)).toBeLessThanOrEqual(
+        owner(m, D_ALL - D_OPERATOR, SR_ANCHOR_MTRI),
+      )
+    }
+    expect(owner(20, D_ALL, SR_ANCHOR_MTRI)).toBeLessThan(
+      owner(20, D_ALL - D_OPERATOR, SR_ANCHOR_MTRI),
+    )
+  })
+
+  it('counts the anchor per receipt: per operator, an owner-only anchor set breaks no tie', () => {
+    console.log(
+      [
+        `the owner's world, all six rules: the anchor's group per receipt (${D_ALL}) / per operator (${D_ALL + D_ANCHOR_PER_OPERATOR}), mean of ${SIM_SEEDS} seeds per run`,
+        '| M | jobs agreed | attacker keys suspended | attacker mTRI | honest mTRI |',
+        '|---|---|---|---|---|',
+        ...M.map(
+          (m) =>
+            `| ${m} | ${[SR_JOBS_AGREED, SR_ATTACKERS_SUSPENDED, SR_ATTACKER_MTRI, SR_HONEST_MTRI].map((w) => pair(owner(m, D_ALL, w), owner(m, D_ALL + D_ANCHOR_PER_OPERATOR, w))).join(' | ')} |`,
+        ),
+      ].join('\n'),
+    )
+    expect(
+      owner(20, D_ALL + D_ANCHOR_PER_OPERATOR, SR_JOBS_AGREED),
+    ).toBeLessThan(owner(20, D_ALL, SR_JOBS_AGREED))
+    expect(
+      owner(20, D_ALL + D_ANCHOR_PER_OPERATOR, SR_ATTACKERS_SUSPENDED),
+    ).toBeLessThan(owner(20, D_ALL, SR_ATTACKERS_SUSPENDED))
   })
 })
 
@@ -493,6 +588,66 @@ describe('probation, the cap and the kinds (sybil.t27, statement.t27)', () => {
     expect([...kinds(a.honest.id)]).toEqual(['executor_fee'])
     expect([...kinds(a.owner.id)]).toEqual(['verifier_fee'])
     for (const r of ledger.rows) expect(r.epoch).toBe(0)
+  })
+})
+
+// --- one credit per operator ---------------------------------------------------------
+
+describe('one credit per operator (sybil.t27 rule 6, gHashTag/t27#8853)', () => {
+  /** Two of the owner's keys on one machine, as production ran on 2026-10-10 (trios#1763). */
+  async function ownersTwoKeys(econ: Partial<HostingEconomics>) {
+    const k1 = generateHostKey()
+    const k2 = generateHostKey()
+    const w = await world(econ, {
+      [keyIdOf(k1.publicHex)]: TIER_OWNER,
+      [keyIdOf(k2.publicHex)]: TIER_OWNER,
+    })
+    const o1 = w.agent(k1.privatePem, '203.0.113.7', honest, TIER_OWNER)
+    const o2 = w.agent(k2.privatePem, '203.0.113.7', honest, TIER_OWNER)
+    await o1.register()
+    await o2.register()
+    const jobs = PROBATION_JOBS + 3
+    for (let i = 1; i <= jobs; i++)
+      expect((await runJob(o1, i, o1, o2)).job?.verdict).toBe('agreed')
+    const ledger = (await w.get('/hosting/ledger')).json
+    const credits = ledger.rows.filter(
+      (r: { kind: string }) => r.kind === 'credit',
+    )
+    return { ledger, o1, o2, jobs, credits }
+  }
+
+  it('credits the owner once for a job both of his keys ran: the first receipt, as the executor', async () => {
+    const { ledger, o1, o2, jobs, credits } = await ownersTwoKeys({
+      sybil: true,
+    })
+    // both keys agreed every time, and neither is struck
+    expect(row(ledger, o1)).toMatchObject({
+      agreed: jobs,
+      strikes: 0,
+      balance_mtri: 3,
+      credited_jobs: 3,
+    })
+    // the second receipt is the same operator's: nothing, and no ledger row
+    expect(row(ledger, o2)).toMatchObject({
+      agreed: jobs,
+      strikes: 0,
+      balance_mtri: 0,
+      credited_jobs: 0,
+    })
+    expect(credits).toHaveLength(3)
+    for (const r of credits) {
+      expect(r.host).toBe(o1.id)
+      expect(r.fee_kind).toBe('executor_fee')
+    }
+  })
+
+  it('with the rules off (slice 1), both of his keys are credited, as before', async () => {
+    const { ledger, o1, o2, jobs, credits } = await ownersTwoKeys({
+      sybil: false,
+    })
+    expect(row(ledger, o1)).toMatchObject({ balance_mtri: jobs })
+    expect(row(ledger, o2)).toMatchObject({ balance_mtri: jobs })
+    expect(credits).toHaveLength(2 * jobs)
   })
 })
 

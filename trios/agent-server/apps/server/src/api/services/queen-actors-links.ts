@@ -228,11 +228,18 @@ function makeLinks(sys: ActorSystem) {
     }
     deliver(c('stop_signal', 0, u32(timeoutMs)))
     if (sys.alive(pid) && timeoutMs !== SHUTDOWN_INFINITY) {
-      const cancel = clock.after(timeoutMs, () => {
-        const s = c('stop_signal', u32(clock.now() - t0), u32(timeoutMs))
-        if (s === X_KILL) deliver(X_KILL)
-      })
-      void ended.then(cancel)
+      // A timer can fire before its clock says the timeout has passed (see
+      // stopTurn in queen-actors.ts, trios#1766): then stop_signal is X_NONE
+      // and the kill was never delivered. Ask again once the rest has passed.
+      let cancel = () => {}
+      const due = () => {
+        const waited = u32(clock.now() - t0)
+        if (c('stop_signal', waited, u32(timeoutMs)) === X_KILL) deliver(X_KILL)
+        else if (sys.alive(pid))
+          cancel = clock.after(Math.max(1, timeoutMs - waited), due)
+      }
+      cancel = clock.after(timeoutMs, due)
+      void ended.then(() => cancel())
     }
     return ended
   }

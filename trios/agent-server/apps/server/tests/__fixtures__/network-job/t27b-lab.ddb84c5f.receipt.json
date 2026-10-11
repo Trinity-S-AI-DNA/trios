@@ -1,0 +1,30 @@
+{
+ "commit": "ddb84c5f58994da8afe3d59185f3ef121ae7065f",
+ "input_root": "155954794e23c2f2543eab11f9ea723ad62f4e48cae405deeec4f0fc3df658c2",
+ "key_id": "a05db80f53c317f6",
+ "kind": "t27-corpus-receipt-v1",
+ "nonce": null,
+ "output_root": "bc1e021d3ee03bd84ca48e1ed208aa644ae521b83018bd130339bdf4fbea5210",
+ "signature": "294ae618b8f93168629430fb30e5691375615710da976d4519a51d289d133a0e8ed76f66f281f12e7b16eb38387557299beecf8080e7f9c789ff261d686ba105",
+ "t27b_sha256": "fea8400a8aad4a3ea58ece120e6e949c4664ada5f19f50004e5455284a4a4604",
+ "t27c_sha256": "1929dee2902b49ff71d5f425767726aa35610e796525902c811864f19c510dde",
+ "totals": {
+  "crash": 0,
+  "files": 1830,
+  "jit_interp_mismatch": 0,
+  "mismatch": 0,
+  "reference_compared": 1349,
+  "reference_disagree": 0,
+  "reference_disagree_tests": 0,
+  "reference_lab_error": 0,
+  "reference_pass": 1342,
+  "t27b_fail": 22,
+  "t27b_pass": 1329,
+  "t27b_pass_vacuous": 6,
+  "t27b_pass_vacuous_where_reference_passes": 5,
+  "t27b_pass_where_reference_does_not": 3,
+  "t27b_pass_where_reference_passes": 1326,
+  "timeout": 4
+ },
+ "verdict_root": "640bd9393d3b72c229941188d770c82d214021096914395a2b5769f50dc5c6ab"
+}

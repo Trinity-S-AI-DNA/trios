@@ -354,13 +354,34 @@ interface ProcessResult {
   survivors: number
 }
 
+/** Whether a pid is still a process. 0 or less is never one: kill(0) is our own group. */
 const alive = (pid: number) => {
+  if (!(pid > 0)) return false
   try {
     process.kill(pid, 0)
     return true
   } catch {
     return false
   }
+}
+
+/** The pid a turn's shell wrote to `file`; 0 while there is none. */
+const pidIn = (file: string) => {
+  try {
+    const pid = Number(readFileSync(file, 'utf8').trim())
+    return pid > 0 ? pid : 0
+  } catch {
+    return 0
+  }
+}
+
+/** Wait until `cond` holds or `deadline` (performance.now) has passed. */
+async function until(cond: () => boolean, deadline: number): Promise<boolean> {
+  while (!cond()) {
+    if (performance.now() > deadline) return false
+    await sleep(20)
+  }
+  return true
 }
 
 async function processKills(side: Side, turns: number): Promise<ProcessResult> {
@@ -400,9 +421,27 @@ async function processKills(side: Side, turns: number): Promise<ProcessResult> {
     )
     sys.send(pid, i)
   }
-  // the bound is 1 s; the grace 3 s; give either side 10 s after the kill
-  await sleep(1_000 + 10_000)
-  const grandchildren = files.map((f) => Number(readFileSync(f, 'utf8').trim()))
+  // WAIT FOR WHAT IS MEASURED, NOT A FIXED 11 S FROM THE SPAWN. On a loaded
+  // runner a turn can start late, and a fixed sleep could read a pid file
+  // before its shell wrote it (Number('') is 0, and kill(0) is this process's
+  // own group).
+  // So: every turn killed, every grandchild's pid known (or its turn over
+  // before it had one), then up to 10 s after the last kill for the
+  // turns to end and the grandchildren to go. The bound is 1 s, the grace
+  // 3 s (trios#1766).
+  const deadline = performance.now() + 60_000
+  await until(
+    () =>
+      killedAt.size === turns &&
+      files.every((f, i) => pidIn(f) > 0 || endedAt.has(i)),
+    deadline,
+  )
+  const grandchildren = files.map(pidIn)
+  const lastKill = Math.max(...killedAt.values())
+  await until(
+    () => endedAt.size === turns && !grandchildren.some(alive),
+    lastKill + 10_000,
+  )
   const survivors = grandchildren.filter(alive).length
   // leave nothing behind, whatever the side
   for (const g of grandchildren) if (alive(g)) process.kill(g, 'SIGKILL')
@@ -512,5 +551,5 @@ describe('turns that stop: before and after, same input', () => {
         JSON.stringify([before, after], null, 2),
       )
     expect(after.survivors).toBe(0)
-  }, 120_000)
+  }, 240_000)
 })

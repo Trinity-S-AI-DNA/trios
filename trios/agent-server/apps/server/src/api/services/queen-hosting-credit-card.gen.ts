@@ -24,6 +24,7 @@ export const TOKEN_VALUE_CLAIMED = false satisfies boolean;
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 export const RC_BAD_SIGNATURE = 2 satisfies number;
@@ -31,11 +32,20 @@ export const RC_EQUIVOCATION = 5 satisfies number;
 export const RC_INPUT_MISMATCH = 7 satisfies number;
 export const RC_NOT_LEASED = 3 satisfies number;
 export const RC_OUTPUT_MISMATCH = 9 satisfies number;
+export const REPLICAS_K = 2 satisfies number;
+export const REPLICAS_MAX = 3 satisfies number;
 export const SIDE_AGREED = 0 satisfies number;
 export const SIDE_DISSENT = 1 satisfies number;
 export const SIDE_NONE = 2 satisfies number;
 // t27c gen-ts: fn tampered was not emitted -- this backend lowers declarations, not bodies.
+export const AUTHOR_PARTS = 100 satisfies number;
+export const EXECUTOR_PARTS = 450 satisfies number;
+export const POOL_PARTS = 1000 satisfies number;
+export const PROVIDER_PARTS = 150 satisfies number;
+export const VERIFIER_BASE_PARTS = 300 satisfies number;
+// t27c gen-ts: fn part_of was not emitted -- this backend lowers declarations, not bodies.
 export const REWARD_PER_JOB_MTRI = 1 satisfies number;
+export const DECIMALS = 3 satisfies number;
 export const EVIDENCE_OTHER_RUN = 5 satisfies number;
 export const EVIDENCE_UNBOUND = 4 satisfies number;
 export const LINKED = 0 satisfies number;
@@ -59,6 +69,7 @@ export const OUT_REJECTED_AND_SLASHED = 1 satisfies number;
 export const PAY_NONE = 0 satisfies number;
 export const PAY_NORMAL = 1 satisfies number;
 export const PAY_SLASH_ONLY = 2 satisfies number;
+export const VERIFIER_FEE = 4 satisfies number;
 // t27c gen-ts: fn attestation_level was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn payout was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn testnet_credit_allowed was not emitted -- this backend lowers declarations, not bodies.
@@ -67,7 +78,7 @@ export const DEVICE_ROOTED_LEVELS = 0 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["CREDIT_KIND", "LE_CREDIT", "LE_STRIKE", "LE_SLASH", "LEDGER_KINDS", "BALANCE_MAX", "SETTLEMENT_ENABLED", "SETTLE_THRESHOLD_MTRI", "TOKEN_VALUE_CLAIMED", "RC_BAD_SIGNATURE", "RC_EQUIVOCATION", "RC_INPUT_MISMATCH", "RC_NOT_LEASED", "RC_OUTPUT_MISMATCH", "SIDE_AGREED", "SIDE_DISSENT", "SIDE_NONE", "REWARD_PER_JOB_MTRI", "EVIDENCE_OTHER_RUN", "EVIDENCE_UNBOUND", "LINKED", "NO_CHANGE", "NO_LOGS", "NO_OUTPUTS", "NO_TESTS", "RUN_OTHER_CHANGE", "RUN_UNBOUND", "SEAL_MATCH", "SEAL_NOT_VERIFIED", "ATT_DEVICE_BOUND", "ATT_NONE", "ATT_REPRODUCED", "ATT_SOFTWARE_SIGNED", "CREDIT_TRANSFERABLE", "EXECUTOR_FEE", "OUT_CREDITED", "OUT_REJECTED_AND_SLASHED", "PAY_NONE", "PAY_NORMAL", "PAY_SLASH_ONLY", "DEVICE_ROOTED_LEVELS"] as const;
+export const __DECL_ORDER__ = ["CREDIT_KIND", "LE_CREDIT", "LE_STRIKE", "LE_SLASH", "LEDGER_KINDS", "BALANCE_MAX", "SETTLEMENT_ENABLED", "SETTLE_THRESHOLD_MTRI", "TOKEN_VALUE_CLAIMED", "RC_BAD_SIGNATURE", "RC_EQUIVOCATION", "RC_INPUT_MISMATCH", "RC_NOT_LEASED", "RC_OUTPUT_MISMATCH", "REPLICAS_K", "REPLICAS_MAX", "SIDE_AGREED", "SIDE_DISSENT", "SIDE_NONE", "AUTHOR_PARTS", "EXECUTOR_PARTS", "POOL_PARTS", "PROVIDER_PARTS", "VERIFIER_BASE_PARTS", "REWARD_PER_JOB_MTRI", "DECIMALS", "EVIDENCE_OTHER_RUN", "EVIDENCE_UNBOUND", "LINKED", "NO_CHANGE", "NO_LOGS", "NO_OUTPUTS", "NO_TESTS", "RUN_OTHER_CHANGE", "RUN_UNBOUND", "SEAL_MATCH", "SEAL_NOT_VERIFIED", "ATT_DEVICE_BOUND", "ATT_NONE", "ATT_REPRODUCED", "ATT_SOFTWARE_SIGNED", "CREDIT_TRANSFERABLE", "EXECUTOR_FEE", "OUT_CREDITED", "OUT_REJECTED_AND_SLASHED", "PAY_NONE", "PAY_NORMAL", "PAY_SLASH_ONLY", "VERIFIER_FEE", "DEVICE_ROOTED_LEVELS"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

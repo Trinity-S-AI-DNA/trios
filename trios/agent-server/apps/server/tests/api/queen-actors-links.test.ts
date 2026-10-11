@@ -41,7 +41,7 @@ import {
   PASSIVATE_IDLE_SECONDS,
 } from '../../src/api/services/queen-keyed-card.gen'
 import { DEFAULT_SPECS_ROOT } from '../../src/inngest/spec-catalog'
-import { VirtualClock } from './queen-virtual-clock'
+import { EarlyClock, VirtualClock } from './queen-virtual-clock'
 
 const sha = (file: string) =>
   createHash('sha256')
@@ -355,6 +355,24 @@ describe('an orderly stop', () => {
       `tidy ended ${X_SHUTDOWN} at 7000`,
       `first ended ${X_SHUTDOWN} at 7000`,
     ])
+  })
+
+  it('a timer that fires before its clock says so still kills at the timeout (trios#1766)', async () => {
+    // stop_signal(4999, 5000) is X_NONE; asked once, the kill never came
+    const clock = new EarlyClock()
+    const sys = createActorSystem(clock, { slices: false })
+    const links = linksOf(sys)
+    const stubborn = sys.spawn<Exit>({
+      name: 'stubborn',
+      init: (self) => links.trapExit(self),
+      receive: () => {},
+    })
+    const r = links.stop(stubborn, 5000)
+    await clock.runUntil(4999)
+    expect(sys.alive(stubborn)).toBe(true)
+    await clock.runUntil(5000)
+    expect(sys.alive(stubborn)).toBe(false)
+    expect(await r).toBe(X_KILLED)
   })
 
   it('a brutal stop kills at once, trapping or not', async () => {

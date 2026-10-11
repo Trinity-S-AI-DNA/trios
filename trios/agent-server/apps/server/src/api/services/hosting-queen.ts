@@ -61,6 +61,8 @@ import {
   nextToClose,
   onProbation,
   openReplicas,
+  operatorCredit,
+  operatorFirst,
   originBlocks,
   places,
   publicMayTake,
@@ -84,7 +86,6 @@ import {
   suspended,
   tampered,
   tierOf,
-  voteCredit,
   wantedAfter,
 } from './hosting-cards'
 import {
@@ -264,6 +265,12 @@ interface Vote {
   wrongCanary: boolean
   /** Its place among the job's agreeing receipts, by arrival (statement.t27 shard_kind). */
   index: number
+  /**
+   * sybil.t27 rule 6: the first receipt of its operator among the job's
+   * agreeing ones (operator_first). Set only when a closed job is accounted;
+   * a vote without it is credited nothing under the sybil rules.
+   */
+  firstOfOperator?: boolean
 }
 
 const int = (v: unknown, max: number): number | null =>
@@ -610,7 +617,12 @@ export function createHostingQueen(deps: HostingQueenDeps) {
       await s.putLease(l)
     }
     const known = knownOf(job)
-    for (const [group, members] of ranked.entries())
+    // sybil.t27 rule 6 reads the tiers of each group's receipts, by arrival
+    const hosts = econ.sybil
+      ? new Map((await s.hosts()).map((h) => [h.id, h]))
+      : null
+    for (const [group, members] of ranked.entries()) {
+      const tiers = members.map((l) => tierOfHost(hosts?.get(l.hostId)))
       for (const [index, l] of members.entries())
         await account(s, job, {
           hostId: l.hostId,
@@ -620,7 +632,9 @@ export function createHostingQueen(deps: HostingQueenDeps) {
           wrongCanary:
             econ.sybil && canaryWrong(known !== null, l.outputHash === known),
           index,
+          firstOfOperator: econ.sybil && operatorFirst(tiers, index),
         })
+    }
     const top = ranked[0]?.[0]?.receipt
     if (verdict !== JV_AGREED || !top) return
     const stated = readNormalized(String(top.output ?? ''))
@@ -645,8 +659,9 @@ export function createHostingQueen(deps: HostingQueenDeps) {
 
   /**
    * credit.t27: one credit, one strike, one slash per (host, job), never more.
-   * With the sybil rules: probation, the epoch cap, and the slash (sybil.t27).
-   * Every row is named by statement.t27's kind, in the epoch of its time.
+   * With the sybil rules: probation, the epoch cap, the slash, and one credit
+   * per operator per job (sybil.t27 rule 6). Every row is named by
+   * statement.t27's kind, in the epoch of its time.
    */
   async function account(s: HostingTx, job: JobRow, v: Vote) {
     const host = await s.host(v.hostId)
@@ -659,7 +674,14 @@ export function createHostingQueen(deps: HostingQueenDeps) {
     let earned = econ.sybil && host ? await earnedIn(s, v.hostId, epoch) : 0
     const mtri =
       econ.sybil && host
-        ? voteCredit(v.side, credited, host.agreed ?? 0, earned, cap)
+        ? operatorCredit(
+            v.firstOfOperator === true,
+            v.side,
+            credited,
+            host.agreed ?? 0,
+            earned,
+            cap,
+          )
         : creditMtri(v.side, false, credited)
     const row = { hostId: v.hostId, jobId: job.id, epoch, receipt: v.lease }
     if (mtri > 0 && rowAdmitted(LE_CREDIT, credited)) {

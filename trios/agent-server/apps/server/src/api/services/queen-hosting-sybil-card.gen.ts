@@ -25,9 +25,13 @@ export const ATTEST_GITHUB_AGE = 2 satisfies number;
 export const ATTEST_KINDS = 3 satisfies number;
 export const GITHUB_AGE_MIN_DAYS = 365 satisfies number;
 // t27c gen-ts: fn attested was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn host_operator was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn operators_of was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn operator_first was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn vote_credit was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn slash_due was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn struck was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn operator_credit was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn slash_mtri was not emitted -- this backend lowers declarations, not bodies.
 export const SIM_ANCHOR_HOSTS = 2 satisfies number;
 export const SIM_HONEST = 8 satisfies number;
@@ -46,8 +50,10 @@ export const D_CANARY = 2 satisfies number;
 export const D_PROBATION = 4 satisfies number;
 export const D_CAP = 8 satisfies number;
 export const D_SLASH = 16 satisfies number;
-export const D_ALL = 31 satisfies number;
-export const D_NO_ANCHOR_NO_CANARY = 28 satisfies number;
+export const D_OPERATOR = 32 satisfies number;
+export const D_ALL = 63 satisfies number;
+export const D_NO_ANCHOR_NO_CANARY = 60 satisfies number;
+export const D_ANCHOR_PER_OPERATOR = 64 satisfies number;
 export const D_SLICE1 = 0 satisfies number;
 // t27c gen-ts: fn defended was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn sim_tier was not emitted -- this backend lowers declarations, not bodies.
@@ -62,10 +68,15 @@ export const SR_JOBS_AGREED = 5 satisfies number;
 export const SR_ANCHOR_REPLICAS = 6 satisfies number;
 export const SR_CANARIES = 7 satisfies number;
 export const SR_ATTACKER_REPLICAS = 8 satisfies number;
-export const SR_KINDS = 9 satisfies number;
+export const SR_ANCHOR_MTRI = 9 satisfies number;
+export const SR_KINDS = 10 satisfies number;
 // t27c gen-ts: fn sybil_run was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn sybil_world_total was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn sybil_total was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn sybil_mean_milli was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -103,8 +114,24 @@ export const SIDE_DISSENT = 1 satisfies number;
 export const SIDE_NONE = 2 satisfies number;
 export const TOP_GROUP = 0 satisfies number;
 // t27c gen-ts: fn job_verdict was not emitted -- this backend lowers declarations, not bodies.
-// t27c gen-ts: fn quorum_needed was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn side_of was not emitted -- this backend lowers declarations, not bodies.
+export const NO_KEY = 0 satisfies number;
+export const NO_OPERATOR = 0 satisfies number;
+export const OPERATOR_OWNER = 1 satisfies number;
+export const QUORUM_ROWS = 8 satisfies number;
+export interface QuorumConfig {
+  readonly keys: number;
+  readonly key_id: readonly [number, number, number, number, number, number, number, number];
+  readonly operator: readonly [number, number, number, number, number, number, number, number];
+  readonly n: number;
+  readonly f: number;
+  readonly m: number;
+}
+export const QuorumConfig = Object.freeze({ __struct__: "QuorumConfig", fields: [["keys", "u32"], ["key_id", "[8]u64"], ["operator", "[8]u32"], ["n", "u32"], ["f", "u32"], ["m", "u32"]] } as const);
+// t27c gen-ts: fn key_row was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn operator_of_key was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn operator_votes was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn safe_m was not emitted -- this backend lowers declarations, not bodies.
 export const MASK32 = 4294967295 satisfies number;
 export const STREAM_SEED = 1 satisfies number;
 // t27c gen-ts: fn mix32 was not emitted -- this backend lowers declarations, not bodies.
@@ -128,8 +155,8 @@ export const PAY_SLASH_ONLY = 2 satisfies number;
 // t27c gen-ts: fn testnet_credit_allowed was not emitted -- this backend lowers declarations, not bodies.
 
 // Declaration order, which the spec's own laws depend on.
-export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["ANCHOR_SLOTS", "PERMILLE", "CANARY_PERMILLE", "PROBATION_JOBS", "CAP_PUBLIC_MTRI", "CAP_ATTESTED_MTRI", "CAP_TRUSTED_MTRI", "ATTEST_NONE", "ATTEST_TELEGRAM", "ATTEST_GITHUB_AGE", "ATTEST_KINDS", "GITHUB_AGE_MIN_DAYS", "SIM_ANCHOR_HOSTS", "SIM_HONEST", "SIM_KEYS_MAX", "SIM_ATTACKERS_MAX", "SIM_EPOCHS", "SIM_JOBS_PER_EPOCH", "SIM_SEEDS", "SIM_BASE_SEED", "SYB_STREAM_CANARY", "SYB_STREAM_PLACE", "ANSWER_TRUE", "ANSWER_WRONG", "D_ANCHOR", "D_CANARY", "D_PROBATION", "D_CAP", "D_SLASH", "D_ALL", "D_NO_ANCHOR_NO_CANARY", "D_SLICE1", "SR_ATTACKER_MTRI", "SR_HONEST_MTRI", "SR_WRONG_AGREED", "SR_ATTACKERS_SUSPENDED", "SR_HONEST_SUSPENDED", "SR_JOBS_AGREED", "SR_ANCHOR_REPLICAS", "SR_CANARIES", "SR_ATTACKER_REPLICAS", "SR_KINDS", "BALANCE_MAX", "STRIKES_MAX", "TIER_OWNER", "TIER_PUBLIC", "TIER_TRUSTED", "FAULTS_ASSUMED", "JV_AGREED", "JV_PENDING", "JV_TIEBREAK", "JV_UNRESOLVED", "REPLICAS_K", "REPLICAS_MAX", "SIDE_AGREED", "SIDE_DISSENT", "SIDE_NONE", "TOP_GROUP", "MASK32", "STREAM_SEED", "REWARD_PER_JOB_MTRI", "ATT_DEVICE_BOUND", "ATT_NONE", "ATT_REPRODUCED", "ATT_SOFTWARE_SIGNED", "CREDIT_TRANSFERABLE", "OUT_CREDITED", "OUT_REJECTED_AND_SLASHED", "PAY_NONE", "PAY_NORMAL", "PAY_SLASH_ONLY"] as const;
+export const __STRUCT_ORDER__ = ["QuorumConfig"] as const;
+export const __DECL_ORDER__ = ["ANCHOR_SLOTS", "PERMILLE", "CANARY_PERMILLE", "PROBATION_JOBS", "CAP_PUBLIC_MTRI", "CAP_ATTESTED_MTRI", "CAP_TRUSTED_MTRI", "ATTEST_NONE", "ATTEST_TELEGRAM", "ATTEST_GITHUB_AGE", "ATTEST_KINDS", "GITHUB_AGE_MIN_DAYS", "SIM_ANCHOR_HOSTS", "SIM_HONEST", "SIM_KEYS_MAX", "SIM_ATTACKERS_MAX", "SIM_EPOCHS", "SIM_JOBS_PER_EPOCH", "SIM_SEEDS", "SIM_BASE_SEED", "SYB_STREAM_CANARY", "SYB_STREAM_PLACE", "ANSWER_TRUE", "ANSWER_WRONG", "D_ANCHOR", "D_CANARY", "D_PROBATION", "D_CAP", "D_SLASH", "D_OPERATOR", "D_ALL", "D_NO_ANCHOR_NO_CANARY", "D_ANCHOR_PER_OPERATOR", "D_SLICE1", "SR_ATTACKER_MTRI", "SR_HONEST_MTRI", "SR_WRONG_AGREED", "SR_ATTACKERS_SUSPENDED", "SR_HONEST_SUSPENDED", "SR_JOBS_AGREED", "SR_ANCHOR_REPLICAS", "SR_CANARIES", "SR_ATTACKER_REPLICAS", "SR_ANCHOR_MTRI", "SR_KINDS", "BALANCE_MAX", "STRIKES_MAX", "TIER_OWNER", "TIER_PUBLIC", "TIER_TRUSTED", "FAULTS_ASSUMED", "JV_AGREED", "JV_PENDING", "JV_TIEBREAK", "JV_UNRESOLVED", "REPLICAS_K", "REPLICAS_MAX", "SIDE_AGREED", "SIDE_DISSENT", "SIDE_NONE", "TOP_GROUP", "NO_KEY", "NO_OPERATOR", "OPERATOR_OWNER", "QUORUM_ROWS", "QuorumConfig", "MASK32", "STREAM_SEED", "REWARD_PER_JOB_MTRI", "ATT_DEVICE_BOUND", "ATT_NONE", "ATT_REPRODUCED", "ATT_SOFTWARE_SIGNED", "CREDIT_TRANSFERABLE", "OUT_CREDITED", "OUT_REJECTED_AND_SLASHED", "PAY_NONE", "PAY_NORMAL", "PAY_SLASH_ONLY"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

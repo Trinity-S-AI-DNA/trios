@@ -495,6 +495,28 @@ describe('a grace timer that comes back early (virtual clock, trios#1766)', () =
     expect(sys.stats.held).toBe(0)
     expect(sys.stats.abandoned).toBe(0)
   })
+
+  it('still abandons a loop turn deaf to its abort, at the grace and not before', async () => {
+    // the other answer of escalation: ESC_ABANDON, on the same early timer
+    const v = new VirtualClock()
+    const sys = createActorSystem(early(v), { turnStop: true })
+    const pid = sys.spawn<string>({
+      name: 'deaf-loop',
+      turnMaxSeconds: 30,
+      receive: () => new Promise<void>((r) => v.after(HOUR, r)),
+    })
+    sys.send(pid, 'go')
+    // the kill timer comes back at 29 999: ceil(29.999 s) is the 30 s bound
+    await v.runUntil(29_999)
+    expect(sys.alive(pid)).toBe(false)
+    expect(sys.stats.held).toBe(1)
+    await v.runUntil(29_999 + TURN_STOP_GRACE_MS - 1)
+    expect(sys.stats.abandoned).toBe(0)
+    await v.runUntil(29_999 + TURN_STOP_GRACE_MS)
+    expect(sys.stats.abandoned).toBe(1)
+    expect(sys.stats.escalated).toBe(0)
+    expect(sys.stats.held).toBe(1)
+  })
 })
 
 describe('commands of a stopped turn', () => {

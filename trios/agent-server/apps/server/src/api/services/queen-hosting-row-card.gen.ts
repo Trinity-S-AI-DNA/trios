@@ -66,8 +66,8 @@ export const VW_PASS = 0 satisfies number;
 export const VW_TIMEOUT = 3 satisfies number;
 // t27c gen-ts: fn job_verdict was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn lists_tests was not emitted -- this backend lowers declarations, not bodies.
-// t27c gen-ts: fn quorum_needed was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn verdict_votes was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn safe_m was not emitted -- this backend lowers declarations, not bodies.
 export const FAIL = 1 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
