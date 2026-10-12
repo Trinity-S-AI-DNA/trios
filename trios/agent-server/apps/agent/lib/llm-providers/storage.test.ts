@@ -77,10 +77,29 @@ mock.module('@/lib/auth/sessionStorage', () => ({
   },
 }))
 
-mock.module('@/lib/browseros/adapter', () => ({
-  getBrowserOSAdapter: () => {
+// The adapter stub must be a COMPLETE stand-in for the module's
+// value exports: capabilities.ts imports the BrowserOSAdapter class
+// itself, so the mock carries both. Like the real adapter outside the
+// shell, the methods reject - which is exactly what the port helpers
+// and the backup path already catch.
+class BrowserOSAdapterStub {
+  static getInstance(): BrowserOSAdapterStub {
+    return new BrowserOSAdapterStub()
+  }
+  async getPref(): Promise<never> {
     throw new Error('BrowserOS API not available')
-  },
+  }
+  async setPref(): Promise<never> {
+    throw new Error('BrowserOS API not available')
+  }
+  async getBrowserosVersion(): Promise<never> {
+    throw new Error('BrowserOS API not available')
+  }
+}
+
+mock.module('@/lib/browseros/adapter', () => ({
+  BrowserOSAdapter: BrowserOSAdapterStub,
+  getBrowserOSAdapter: () => BrowserOSAdapterStub.getInstance(),
 }))
 
 mock.module('@/lib/browseros/prefs', () => ({
@@ -170,7 +189,11 @@ describe('loadProviders', () => {
   })
 
   it('leaves non-default providers untouched', async () => {
-    const openai = { id: 'openai', type: 'openai', name: 'OpenAI' }
+    const openai = {
+      id: 'openai',
+      type: 'openai',
+      name: 'OpenAI',
+    } as unknown as Awaited<ReturnType<typeof loadProviders>>[number]
     values.set('local:llm-providers', [openai])
     const loaded = await loadProviders()
     expect(loaded).toEqual([openai])
