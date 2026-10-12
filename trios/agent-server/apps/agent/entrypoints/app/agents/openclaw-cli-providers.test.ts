@@ -30,8 +30,11 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 
+// Complete stand-in for the module's value exports: other suites of
+// this job import buttonVariants too (the lesson of PR #1903).
 mock.module('@/components/ui/button', () => ({
   Button: () => null,
+  buttonVariants: () => '',
 }))
 
 mock.module('@/lib/browseros/useBrowserOSProviders', () => ({
