@@ -119,13 +119,19 @@ describe('removeConversationExecutionHistory', () => {
 describe('removeConversationExecutionTask', () => {
   it('removes the task and keeps the conversation when others remain', async () => {
     await upsertConversationExecutionTask(task('c2', 't2'))
-    await removeConversationExecutionTask({ conversationId: 'c2', taskId: 't1' })
+    await removeConversationExecutionTask({
+      conversationId: 'c2',
+      taskId: 't1',
+    })
     const history = await getConversationExecutionHistory('c2')
     expect(history?.tasks.map((t) => t.id)).toEqual(['t2'])
   })
 
   it('drops the whole conversation when its last task goes', async () => {
-    await removeConversationExecutionTask({ conversationId: 'c2', taskId: 't2' })
+    await removeConversationExecutionTask({
+      conversationId: 'c2',
+      taskId: 't2',
+    })
     expect(await getConversationExecutionHistory('c2')).toBeNull()
   })
 
