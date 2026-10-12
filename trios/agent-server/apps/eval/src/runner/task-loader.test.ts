@@ -61,10 +61,9 @@ describe('TaskLoadError', () => {
 
 describe('TaskValidationError', () => {
   it('carries the line number and the zod issues', () => {
-    const issues = new z.ZodError([
-      { code: 'invalid_type', path: ['query_id'], message: 'Required' },
-    ])
-    const err = new TaskValidationError('bad line', 7, issues)
+    const failing = z.object({ query_id: z.string() }).safeParse({})
+    if (failing.success) throw new Error('fixture must fail')
+    const err = new TaskValidationError('bad line', 7, failing.error)
     expect(err.name).toBe('TaskValidationError')
     expect(err.lineNumber).toBe(7)
     expect(err.validationErrors).toBeInstanceOf(z.ZodError)
