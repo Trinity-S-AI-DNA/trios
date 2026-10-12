@@ -58,12 +58,21 @@ const {
   upsertConversationExecutionTask,
 } = await import('./storage')
 
+// A full ExecutionTaskRecord: the type demands promptText, string
+// timestamps, the four counters and a steps array; the functions
+// under test only read and write records, so the counters stay zero.
 const task = (conversationId: string, id: string) => ({
   conversationId,
   id,
+  promptText: `prompt ${id}`,
+  startedAt: '2026-10-12T00:00:00.000Z',
+  completedAt: '2026-10-12T00:00:01.000Z',
   status: 'completed' as const,
-  startedAt: 1,
-  completedAt: 2,
+  actionCount: 0,
+  approvalCount: 0,
+  deniedCount: 0,
+  errorCount: 0,
+  steps: [],
 })
 
 describe('executionHistoryStorage', () => {
