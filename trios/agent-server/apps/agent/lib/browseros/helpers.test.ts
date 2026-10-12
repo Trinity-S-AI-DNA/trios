@@ -30,8 +30,11 @@
 
 import { afterAll, describe, expect, it } from 'bun:test'
 
+// biome-ignore lint/style/noProcessEnv: the env seam is the only way to control the port the helpers read (see suite header)
 const HAD_PORT = process.env.VITE_BROWSEROS_SERVER_PORT
+// biome-ignore lint/style/noProcessEnv: the env seam is the only way to control the port the helpers read (see suite header)
 process.env.VITE_BROWSEROS_SERVER_PORT ??= '43210'
+// biome-ignore lint/style/noProcessEnv: the env seam is the only way to control the port the helpers read (see suite header)
 const PORT = process.env.VITE_BROWSEROS_SERVER_PORT
 
 const {
@@ -46,8 +49,10 @@ const {
 
 afterAll(() => {
   if (HAD_PORT === undefined) {
+    // biome-ignore lint/style/noProcessEnv: the env seam is the only way to control the port the helpers read (see suite header)
     delete process.env.VITE_BROWSEROS_SERVER_PORT
   } else {
+    // biome-ignore lint/style/noProcessEnv: the env seam is the only way to control the port the helpers read (see suite header)
     process.env.VITE_BROWSEROS_SERVER_PORT = HAD_PORT
   }
 })
@@ -94,16 +99,12 @@ describe('getProxyServerUrl', () => {
       caught = e
     }
     expect(caught).toBeInstanceOf(ProxyPortError)
-    expect((caught as Error).message).toBe(
-      'Proxy server port not configured.',
-    )
+    expect((caught as Error).message).toBe('Proxy server port not configured.')
   })
 })
 
 describe('getHealthCheckUrl', () => {
   it('answers the health URL on the loopback port', async () => {
-    expect(await getHealthCheckUrl()).toBe(
-      `http://127.0.0.1:${PORT}/health`,
-    )
+    expect(await getHealthCheckUrl()).toBe(`http://127.0.0.1:${PORT}/health`)
   })
 })
