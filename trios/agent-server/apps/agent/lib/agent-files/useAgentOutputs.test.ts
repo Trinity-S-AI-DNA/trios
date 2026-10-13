@@ -35,13 +35,26 @@ import { describe, expect, it } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { AGENT_QUERY_KEYS } from '@/entrypoints/app/agents/useAgents'
-import {
+
+// The port helpers of this group read the port through the env
+// module's one-time snapshot (lib/env.ts parses import.meta.env at
+// load), and this suite's import graph is what first loads that
+// module in the CI file order - left unset, the snapshot would
+// freeze without a port and the helpers suite's own pins would
+// refuse. The seam value is seeded before ANY import that can reach
+// the env module (both the key and the subject imports are dynamic
+// for that reason), exactly as the helpers suite seeds it for its
+// own dynamic import (it restores the previous value in its
+// afterAll).
+process.env.VITE_BROWSEROS_SERVER_PORT ??= '43210'
+
+const { AGENT_QUERY_KEYS } = await import('@/entrypoints/app/agents/useAgents')
+const {
   useAgentOutputs,
   useAgentTurnFiles,
   useInvalidateAgentOutputs,
   useRefreshAgentOutputs,
-} from './useAgentOutputs'
+} = await import('./useAgentOutputs')
 
 const railGroup = (turnId: string) => ({
   turnId,
