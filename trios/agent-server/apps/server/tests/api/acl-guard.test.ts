@@ -61,15 +61,6 @@ const fakeBrowser = (
 const rule = (overrides: Record<string, unknown> = {}) =>
   ({ id: 'r1', sitePattern: '*', enabled: true, ...overrides }) as never
 
-const element = (overrides: Record<string, unknown> = {}) =>
-  ({
-    tagName: 'button',
-    textContent: '',
-    ariaLabel: '',
-    attributes: {},
-    ...overrides,
-  }) as never
-
 const PAGE = { url: 'https://example.com' }
 
 describe('checkAcl - nothing to enforce against', () => {
