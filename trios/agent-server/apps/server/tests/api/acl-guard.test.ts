@@ -71,10 +71,6 @@ const element = (overrides: Record<string, unknown> = {}) =>
   }) as never
 
 const PAGE = { url: 'https://example.com' }
-const PLACE_ORDER = element({
-  textContent: 'Place Order',
-  ariaLabel: 'Place Order',
-})
 
 describe('checkAcl - nothing to enforce against', () => {
   it('lets an unguarded tool through, whatever the rules', async () => {
