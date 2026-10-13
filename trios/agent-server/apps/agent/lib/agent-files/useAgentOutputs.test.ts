@@ -46,6 +46,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 // for that reason), exactly as the helpers suite seeds it for its
 // own dynamic import (it restores the previous value in its
 // afterAll).
+// biome-ignore lint/style/noProcessEnv: the env seam is the only way to reach the port helpers before the env module's one-time snapshot freezes (see suite header)
 process.env.VITE_BROWSEROS_SERVER_PORT ??= '43210'
 
 const { AGENT_QUERY_KEYS } = await import('@/entrypoints/app/agents/useAgents')
