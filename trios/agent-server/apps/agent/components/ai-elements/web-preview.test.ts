@@ -26,7 +26,6 @@ import { describe, expect, it } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import {
   WebPreview,
