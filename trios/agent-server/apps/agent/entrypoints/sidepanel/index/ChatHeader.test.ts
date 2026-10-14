@@ -98,16 +98,20 @@ describe('chatHeaderContract', () => {
   })
 
   it('answers the history link off the history page and the plus button on it', () => {
-    expect(markup({})).toContain('title="Chat history"')
+    // Pinned by href and icon, not by the Link's own attributes: this
+    // group's suites mock react-router with a bare <a href> stand-in in
+    // the CI readdir order, which strips className and title - measured
+    // in the first push of this PR.
+    expect(markup({})).toContain('href="/history"')
     expect(markup({})).toContain('lucide-history')
     const onHistory = markup({}, '/history')
     expect(onHistory).toContain('title="New conversation"')
-    expect(onHistory).not.toContain('title="Chat history"')
+    expect(onHistory).not.toContain('href="/history"')
   })
 
   it('answers no history controls when history is hidden', () => {
     const m = markup({ hideHistory: true })
-    expect(m).not.toContain('title="Chat history"')
+    expect(m).not.toContain('href="/history"')
     const onHistory = markup({ hideHistory: true }, '/history')
     expect(onHistory).not.toContain('title="New conversation"')
   })
