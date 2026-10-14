@@ -33,7 +33,9 @@
  * and hand back a working unsubscribe.
  */
 
-import { describe, expect, it, mock } from 'bun:test'
+import { afterAll, beforeEach, describe, expect, it, mock } from 'bun:test'
+import { scheduleSystemPrompt } from '../schedules/scheduleSystemPrompt'
+import type { LlmProviderConfig } from './types'
 
 const defines: Array<{ key: string; opts: unknown }> = []
 const values = new Map<string, unknown>()
@@ -243,5 +245,334 @@ describe('setupLlmProvidersSyncToBackend', () => {
     expect((watches.get('local:llm-providers') ?? []).length).toBe(before + 1)
     unsubscribe()
     expect((watches.get('local:llm-providers') ?? []).length).toBe(before)
+  })
+})
+
+/*
+ * The getChatServerResponse contract (gHashTag/trios#1545) -
+ * appended to this file because this file owns the heaviest seam
+ * the subject reads: the provider store, whose real instance
+ * materializes against this file's in-memory storage shim (the
+ * readdir file-order constraint found in trios#1571, applied before
+ * push this time). The subject's other storage seams -
+ * mcpServerStorage and personalizationStorage - are the same kind
+ * of wxt items and are driven through this file's values map. The
+ * helpers seam (getAgentServerUrl) and buildChatRequestBody are
+ * recording fakes with the copy-before-mock, restore-in-afterAll
+ * pattern; the subject itself is bound through a query suffix the
+ * mock registry does not match, so the schedules suite's own
+ * process-global stub of it cannot interfere, in any file order.
+ * fetch is overridden with a programmable SSE responder and restored
+ * in afterAll. scheduleSystemPrompt, eventsource-parser,
+ * crypto.randomUUID and Date stay real, so the pinned
+ * userSystemPrompt is built from the real constant and timestamps
+ * are asserted by shape.
+ */
+
+const realHelpers = { ...(await import('@/lib/browseros/helpers')) }
+const realBuildBody = {
+  ...(await import('@/lib/messaging/server/buildChatRequestBody')),
+}
+const realFetch = globalThis.fetch
+
+type FetchCall = { url: string; init: RequestInit }
+type BodyCall = Record<string, unknown>
+
+let fetchCalls: FetchCall[] = []
+let fetchResponseFactory: () => Response = () =>
+  new Response('data: {"type":"finish","finishReason":"stop"}\n\n', {
+    status: 200,
+  })
+let agentUrl = 'http://agent.test:1234'
+let bodyCalls: BodyCall[] = []
+let bodyResult: Record<string, unknown> = { built: 'by-fake' }
+
+afterAll(() => {
+  mock.module('@/lib/browseros/helpers', () => realHelpers)
+  mock.module(
+    '@/lib/messaging/server/buildChatRequestBody',
+    () => realBuildBody,
+  )
+  globalThis.fetch = realFetch
+})
+
+mock.module('@/lib/browseros/helpers', () => ({
+  getAgentServerUrl: async () => agentUrl,
+}))
+
+mock.module('@/lib/messaging/server/buildChatRequestBody', () => ({
+  buildChatRequestBody: (args: BodyCall) => {
+    bodyCalls.push(args)
+    return { ...bodyResult }
+  },
+}))
+
+globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+  fetchCalls.push({ url: String(input), init: init ?? {} })
+  return fetchResponseFactory()
+}) as typeof fetch
+
+const chatSpecifier: string =
+  '../schedules/getChatServerResponse.ts?zcode-real-chat'
+const { getChatServerResponse } = (await import(
+  chatSpecifier
+)) as typeof import('../schedules/getChatServerResponse')
+
+const chatProvider = (
+  overrides: Partial<LlmProviderConfig> = {},
+): LlmProviderConfig => ({
+  id: 'prov-1',
+  type: 'openai',
+  name: 'Primary',
+  modelId: 'gpt-x',
+  supportsImages: true,
+  contextWindow: 128000,
+  temperature: 0.5,
+  createdAt: 1700000000000,
+  updatedAt: 1700000001000,
+  ...overrides,
+})
+
+const sseResponse = (events: string[], status = 200) =>
+  new Response(events.map((data) => `data: ${data}\n\n`).join(''), { status })
+
+const requestBody = (index = 0): Record<string, unknown> =>
+  JSON.parse(String(fetchCalls[index].init.body)) as Record<string, unknown>
+
+describe('getChatServerResponse', () => {
+  beforeEach(() => {
+    fetchCalls = []
+    fetchResponseFactory = () =>
+      new Response('data: {"type":"finish","finishReason":"stop"}\n\n', {
+        status: 200,
+      })
+    agentUrl = 'http://agent.test:1234'
+    bodyCalls = []
+    bodyResult = { built: 'by-fake' }
+    values.delete('local:llm-providers')
+    values.delete('local:default-provider-id')
+    values.delete('local:mcpServers')
+    values.delete('local:personalization')
+  })
+
+  it('posts the user message to the agent chat endpoint and spreads the built body', async () => {
+    values.set('local:llm-providers', [chatProvider()])
+    values.set('local:personalization', 'You are concise.')
+
+    const result = await getChatServerResponse({
+      message: 'plan my day',
+      conversationId: 'conv-9',
+    })
+
+    expect(fetchCalls.length).toBe(1)
+    expect(fetchCalls[0].url).toBe('http://agent.test:1234/chat')
+    expect(fetchCalls[0].init.method).toBe('POST')
+    expect(
+      (fetchCalls[0].init.headers as Record<string, string>)['Content-Type'],
+    ).toBe('application/json')
+
+    const body = requestBody()
+    expect(body.messages).toEqual([{ role: 'user', content: 'plan my day' }])
+    expect(body.built).toBe('by-fake')
+
+    expect(bodyCalls.length).toBe(1)
+    const passed = bodyCalls[0]
+    expect(passed.message).toBe('plan my day')
+    expect(passed.conversationId).toBe('conv-9')
+    expect((passed.provider as LlmProviderConfig).id).toBe('prov-1')
+    expect(passed.mode).toBe('agent')
+    expect(passed.browserContext).toBeUndefined()
+    expect(passed.supportsImages).toBe(true)
+    expect(passed.isScheduledTask).toBe(true)
+    expect(passed.userSystemPrompt).toBe(
+      `You are concise.\n${scheduleSystemPrompt}`,
+    )
+
+    expect(result.conversationId).toBe('conv-9')
+  })
+
+  it('resolves the requested provider by id before falling back to the first stored provider', async () => {
+    values.set('local:llm-providers', [
+      chatProvider(),
+      chatProvider({ id: 'prov-2', name: 'Secondary' }),
+    ])
+
+    await getChatServerResponse({
+      message: 'hi',
+      conversationId: 'c',
+      providerId: 'prov-2',
+    })
+
+    expect((bodyCalls[0].provider as LlmProviderConfig).id).toBe('prov-2')
+
+    await getChatServerResponse({ message: 'hi', conversationId: 'c' })
+
+    expect((bodyCalls[1].provider as LlmProviderConfig).id).toBe('prov-1')
+  })
+
+  it('falls back to the built-in browseros provider when nothing is stored', async () => {
+    const result = await getChatServerResponse({
+      message: 'hi',
+      conversationId: 'c',
+    })
+
+    expect((bodyCalls[0].provider as LlmProviderConfig).type).toBe('browseros')
+    expect(result.conversationId).toBe('c')
+  })
+
+  it('passes the abort signal and the custom mode through to the request', async () => {
+    const controller = new AbortController()
+
+    await getChatServerResponse({
+      message: 'hi',
+      conversationId: 'c',
+      mode: 'chat',
+      signal: controller.signal,
+    })
+
+    expect(fetchCalls[0].init.signal).toBe(controller.signal)
+    expect(bodyCalls[0].mode).toBe('chat')
+  })
+
+  it('includes the browser context only when there is something to include', async () => {
+    await getChatServerResponse({ message: 'hi', conversationId: 'c' })
+    expect(bodyCalls[0].browserContext).toBeUndefined()
+
+    await getChatServerResponse({
+      message: 'hi',
+      conversationId: 'c',
+      windowId: 7,
+    })
+    expect(bodyCalls[1].browserContext).toEqual({
+      windowId: 7,
+      activeTab: undefined,
+      enabledMcpServers: undefined,
+      customMcpServers: undefined,
+    })
+
+    values.set('local:mcpServers', [
+      {
+        id: 'm1',
+        displayName: 'Managed',
+        type: 'managed',
+        managedServerName: 'search',
+      },
+      { id: 'm2', displayName: 'Broken', type: 'managed' },
+      {
+        id: 'c1',
+        displayName: 'Custom',
+        type: 'custom',
+        config: { url: 'https://mcp.test' },
+      },
+      { id: 'c2', displayName: 'No url', type: 'custom', config: {} },
+    ])
+    await getChatServerResponse({ message: 'hi', conversationId: 'c' })
+    expect(bodyCalls[2].browserContext).toEqual({
+      windowId: undefined,
+      activeTab: undefined,
+      enabledMcpServers: ['search'],
+      customMcpServers: [{ name: 'Custom', url: 'https://mcp.test' }],
+    })
+  })
+
+  it('threads the personalization into the system prompt', async () => {
+    values.set('local:personalization', 'Be terse.')
+
+    await getChatServerResponse({ message: 'hi', conversationId: 'c' })
+
+    expect(
+      String(bodyCalls[0].userSystemPrompt).startsWith('Be terse.\n'),
+    ).toBe(true)
+  })
+
+  it('throws the HTTP failure with the status and status text', async () => {
+    fetchResponseFactory = () =>
+      new Response('nope', { status: 500, statusText: 'Internal Server Error' })
+
+    await expect(
+      getChatServerResponse({ message: 'hi', conversationId: 'c' }),
+    ).rejects.toThrow('Chat request failed: 500 Internal Server Error')
+  })
+
+  it('assembles the text, the final result and the log from the stream', async () => {
+    fetchResponseFactory = () =>
+      sseResponse([
+        '{"type":"text-delta","id":"1","delta":"Hello "}',
+        '{"type":"text-delta","id":"2","delta":"world"}',
+        '[DONE]',
+        '{"type":"finish","finishReason":"stop"}',
+      ])
+
+    const result = await getChatServerResponse({
+      message: 'hi',
+      conversationId: 'c',
+    })
+
+    expect(result.text).toBe('Hello world')
+    expect(result.finalResult).toBe('Hello world')
+    expect(result.executionLog).toBe('Hello world')
+    expect(result.toolCalls).toEqual([])
+  })
+
+  it('records tool calls with their outputs and errors and splits the execution log', async () => {
+    fetchResponseFactory = () =>
+      sseResponse([
+        '{"type":"text-delta","id":"1","delta":"Step one"}',
+        '{"type":"tool-input-available","toolCallId":"t1","toolName":"search","input":{"q":"news"}}',
+        '{"type":"text-delta","id":"2","delta":"Step two"}',
+        '{"type":"tool-output-available","toolCallId":"t1","output":"ok"}',
+        '{"type":"tool-input-available","toolCallId":"t2","toolName":"fetch","input":{}}',
+        '{"type":"tool-output-error","toolCallId":"t2","errorText":"boom"}',
+        '{"type":"finish","finishReason":"stop"}',
+      ])
+
+    const result = await getChatServerResponse({
+      message: 'hi',
+      conversationId: 'c',
+    })
+
+    expect(result.toolCalls.length).toBe(2)
+    expect(result.toolCalls[0]).toEqual({
+      id: 't1',
+      name: 'search',
+      input: { q: 'news' },
+      output: 'ok',
+      timestamp: expect.any(String) as string,
+    })
+    expect(result.toolCalls[1].name).toBe('fetch')
+    expect((result.toolCalls[1] as { error?: string }).error).toBe('boom')
+    expect(result.executionLog).toBe('Step one\n\nStep two\n\nStep oneStep two')
+  })
+
+  it('throws the error event text from the stream', async () => {
+    fetchResponseFactory = () =>
+      sseResponse([
+        '{"type":"text-delta","id":"1","delta":"partial"}',
+        '{"type":"error","errorText":"model exploded"}',
+      ])
+
+    await expect(
+      getChatServerResponse({ message: 'hi', conversationId: 'c' }),
+    ).rejects.toThrow('model exploded')
+  })
+
+  it('throws the interruption note when the stream ends without a finish', async () => {
+    fetchResponseFactory = () =>
+      sseResponse(['{"type":"text-delta","id":"1","delta":"partial"}'])
+
+    await expect(
+      getChatServerResponse({ message: 'hi', conversationId: 'c' }),
+    ).rejects.toThrow(
+      'Stream ended unexpectedly without completion. The task may have been interrupted.',
+    )
+  })
+
+  it('generates a uuid conversation id when none is given', async () => {
+    const result = await getChatServerResponse({ message: 'hi' })
+
+    expect(result.conversationId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    )
+    expect(bodyCalls[0].conversationId).toBe(result.conversationId)
   })
 })
