@@ -1,6 +1,21 @@
 {
-  "extends": "./.wxt/tsconfig.json",
+  // Self-contained on purpose, no "extends": bun 1.3.6 resolves every `paths`
+  // entry of an extends chain against the EXTENDED file's directory (and for
+  // duplicated keys it takes the extending file's target), so extending
+  // ./.wxt/tsconfig.json broke every `@/` import in `bun test` once
+  // `wxt prepare` had generated .wxt/ (issue #1909).
+  // Keep the compilerOptions below in sync with the wxt template that
+  // `wxt prepare` writes to .wxt/tsconfig.json when wxt is upgraded.
   "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "strict": true,
+    "skipLibCheck": true,
     "types": ["chrome", "bun"],
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
@@ -14,5 +29,7 @@
         "schema": "./generated/graphql/schema.graphql"
       }
     ]
-  }
+  },
+  "include": ["**/*", "./.wxt/wxt.d.ts"],
+  "exclude": ["dist"]
 }
