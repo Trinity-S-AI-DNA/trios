@@ -1,5 +1,5 @@
 import type { ProtocolApi } from '@browseros/cdp-protocol/protocol-api'
-import { releaseHeldInput, type HeldInputRelease } from './keyboard'
+import { type HeldInputRelease, releaseHeldInput } from './keyboard'
 
 export async function dispatchClick(
   session: ProtocolApi,

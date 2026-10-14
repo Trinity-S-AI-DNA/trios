@@ -22,11 +22,7 @@
 
 import { describe, expect, it } from 'bun:test'
 import type { GitButlerMcpClient } from '../clients/gitbutler-client.js'
-import {
-  absorbSmart,
-  executeAbsorb,
-  planAbsorb,
-} from './absorb-engine.js'
+import { absorbSmart, executeAbsorb, planAbsorb } from './absorb-engine.js'
 import type { AbsorbPlan } from './types.js'
 
 interface RecordingFake {
@@ -35,13 +31,17 @@ interface RecordingFake {
   failCreateFor: Set<string>
 }
 
-const recordingFake = (
-  status: {
-    staged: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed' }[]
-    unstaged: { path: string; status: 'added' | 'modified' | 'deleted' | 'renamed' }[]
-    untracked: string[]
-  },
-): RecordingFake => {
+const recordingFake = (status: {
+  staged: {
+    path: string
+    status: 'added' | 'modified' | 'deleted' | 'renamed'
+  }[]
+  unstaged: {
+    path: string
+    status: 'added' | 'modified' | 'deleted' | 'renamed'
+  }[]
+  untracked: string[]
+}): RecordingFake => {
   const calls: string[] = []
   const failCreateFor = new Set<string>()
   const client = {
@@ -65,7 +65,11 @@ const recordingFake = (
       return 'Files staged'
     },
   }
-  return { client: client as unknown as GitButlerMcpClient, calls, failCreateFor }
+  return {
+    client: client as unknown as GitButlerMcpClient,
+    calls,
+    failCreateFor,
+  }
 }
 
 const WORKSPACE = {
@@ -84,9 +88,11 @@ describe('planAbsorb', () => {
   it('plans branches from staged, unstaged and untracked files without touching the workspace', async () => {
     const { client, calls } = recordingFake(WORKSPACE)
     const plan = await planAbsorb({ gitbutler: client }, 'by-directory')
-    expect(
-      plan.branches.map((b) => b.branchName).sort(),
-    ).toEqual(['main/docs', 'main/notes', 'main/src'])
+    expect(plan.branches.map((b) => b.branchName).sort()).toEqual([
+      'main/docs',
+      'main/notes',
+      'main/src',
+    ])
     expect(plan.unassigned).toEqual([])
     expect(calls).toEqual([])
   })
@@ -163,7 +169,11 @@ describe('executeAbsorb', () => {
 describe('absorbSmart', () => {
   it('dry-run answers the plan without creating anything', async () => {
     const { client, calls } = recordingFake(WORKSPACE)
-    const result = await absorbSmart({ gitbutler: client }, 'by-directory', true)
+    const result = await absorbSmart(
+      { gitbutler: client },
+      'by-directory',
+      true,
+    )
     expect(result.ok).toBe(true)
     expect(result.reason).toContain('Dry run')
     expect(result.plan?.branches?.length).toBe(3)
@@ -172,7 +182,11 @@ describe('absorbSmart', () => {
 
   it('a live run executes the plan', async () => {
     const { client, calls } = recordingFake(WORKSPACE)
-    const result = await absorbSmart({ gitbutler: client }, 'by-directory', false)
+    const result = await absorbSmart(
+      { gitbutler: client },
+      'by-directory',
+      false,
+    )
     expect(result.ok).toBe(true)
     expect(calls.filter((c) => c.startsWith('create:')).length).toBe(3)
   })

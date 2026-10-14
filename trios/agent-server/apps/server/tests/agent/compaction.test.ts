@@ -495,7 +495,9 @@ describe('toRawTokenBudget', () => {
     const config = computeConfig(200_000)
     // Raw estimate is 2x the context window (400 messages x 3000 chars).
     const msgs = Array.from({ length: 400 }, (_, i) =>
-      i % 2 === 0 ? userMsg('z'.repeat(3_000)) : assistantMsg('z'.repeat(3_000)),
+      i % 2 === 0
+        ? userMsg('z'.repeat(3_000))
+        : assistantMsg('z'.repeat(3_000)),
     )
     expect(estimateTokens(msgs)).toBe(400_000)
 
@@ -521,7 +523,9 @@ describe('toRawTokenBudget', () => {
   it('caps summarization input on the same scale as maxSummarizationInput', () => {
     const config = computeConfig(200_000)
     const msgs = Array.from({ length: 400 }, (_, i) =>
-      i % 2 === 0 ? userMsg('z'.repeat(3_000)) : assistantMsg('z'.repeat(3_000)),
+      i % 2 === 0
+        ? userMsg('z'.repeat(3_000))
+        : assistantMsg('z'.repeat(3_000)),
     )
 
     const capped = slidingWindow(

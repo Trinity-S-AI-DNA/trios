@@ -3,9 +3,9 @@
  * Copyright 2025 BrowserOS
  */
 
-import { readFileSync, readdirSync } from 'node:fs'
-import { resolve } from 'node:path'
 import { describe, expect, it } from 'bun:test'
+import { readdirSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import {
   buildTestCommand,
   getAtomicGroupTargets,

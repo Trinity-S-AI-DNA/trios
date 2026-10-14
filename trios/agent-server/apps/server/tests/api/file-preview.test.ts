@@ -9,11 +9,11 @@ import { rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
-  IMAGE_PREVIEW_MAX_BYTES,
-  TEXT_PREVIEW_MAX_BYTES,
   buildFilePreview,
   detectMimeType,
   type FilePreview,
+  IMAGE_PREVIEW_MAX_BYTES,
+  TEXT_PREVIEW_MAX_BYTES,
 } from '../../src/api/services/openclaw/file-preview'
 
 /**
@@ -79,10 +79,7 @@ describe('filePreviewContract', () => {
       const path = join(dir, 'long.txt')
       await writeFile(path, 'a'.repeat(TEXT_PREVIEW_MAX_BYTES + 1))
 
-      const preview = expectKind(
-        await buildFilePreview(path),
-        'text',
-      )
+      const preview = expectKind(await buildFilePreview(path), 'text')
 
       expect(preview.size).toBe(TEXT_PREVIEW_MAX_BYTES + 1)
       expect(preview.snippet.length).toBe(TEXT_PREVIEW_MAX_BYTES)
@@ -297,9 +294,7 @@ describe('filePreviewContract', () => {
 
       expect(preview.mimeType).toBe('image/png')
       expect(preview.size).toBe(bytes.length)
-      expect(preview.dataUrl.startsWith('data:image/png;base64,')).toBe(
-        true,
-      )
+      expect(preview.dataUrl.startsWith('data:image/png;base64,')).toBe(true)
       const payload = preview.dataUrl.slice('data:image/png;base64,'.length)
       expect(Buffer.from(payload, 'base64').equals(bytes)).toBe(true)
     })

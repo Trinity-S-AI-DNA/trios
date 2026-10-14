@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import {
-  briefFor,
-  parseVerdictBlock,
-} from '../../src/api/services/queen-tick'
+import { briefFor, parseVerdictBlock } from '../../src/api/services/queen-tick'
 
 // WHY THE BLOCK MOVED TO THE FRONT.
 //

@@ -10,7 +10,7 @@
 
 import { readdir, readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { type Analyze, type SpecConst, loadCompiler } from './t27-consts'
+import { type Analyze, loadCompiler, type SpecConst } from './t27-consts'
 
 export interface CronCard {
   file: string
