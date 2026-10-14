@@ -995,3 +995,104 @@ describe('scheduledJobRuns', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// The scheduled task results list (gHashTag/trios#1634), appended to this
+// file by the readdir rule: its subject imports this suite's subject (the
+// store, through the two hooks), and a standalone suite in the same group
+// would race the file order (measured across OSes in trios#1571). The
+// real hooks answer empty arrays in a static render - they populate
+// through effects a static render never runs - and a store mock
+// registered here cannot replace the module this file already
+// materialized for its own contract (measured: the first draft of this
+// block registered data-answering hook stand-ins and the subject still
+// answered the empty state, because the plain path was already linked
+// real). So what is pinned is what is statically reachable - the empty
+// answer - plus the list's ordering and gating semantics as source
+// checks, the pattern this repository's own calibration suite uses for
+// behavior no static render can reach.
+
+// A source file with its comments removed - the calibration suite's rule:
+// a shape check must ask the code, never the prose around it.
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const resultsCode = () =>
+  fs
+    .readFileSync(
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../entrypoints/app/scheduled-tasks/ScheduledTaskResults.tsx',
+      ),
+      'utf8',
+    )
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n')
+
+const { ScheduledTaskResults } = (await import(
+  '../../entrypoints/app/scheduled-tasks/ScheduledTaskResults'
+)) as typeof import('../../entrypoints/app/scheduled-tasks/ScheduledTaskResults')
+
+const resultsMarkup = () =>
+  renderToStaticMarkup(
+    createElement(ScheduledTaskResults, {
+      onViewRun: () => {},
+      onCancelRun: () => {},
+      onRetryRun: () => {},
+    }),
+  )
+
+describe('scheduledTaskResultsContract', () => {
+  it('answers the empty state when no run has been recorded', () => {
+    const m = resultsMarkup()
+    expect(m).toContain('No task runs yet')
+    expect(m).toContain('lucide-calendar')
+    expect(m).not.toContain('aria-label="Cancel run"')
+    expect(m).not.toContain('aria-label="Retry run"')
+  })
+
+  it('orders the list with the running runs before the finished ones, newest first', () => {
+    const src = resultsCode()
+    const concat = src.match(
+      /return \[\.\.\.running, \.\.\.completedOrFailed\]/,
+    )
+    if (!concat)
+      throw new Error(
+        'the running runs must be concatenated before the finished ones',
+      )
+    if (
+      !/new Date\(b\.startedAt\)\.getTime\(\) - new Date\(a\.startedAt\)\.getTime\(\)/.test(
+        src,
+      )
+    ) {
+      throw new Error('the finished runs must be sorted newest first')
+    }
+    if (!/r\.status === 'running'/.test(src)) {
+      throw new Error('the running partition must keep the running runs')
+    }
+  })
+
+  it('gates the cancel control on the running status and the retry control on the failed one', () => {
+    const src = resultsCode()
+    const cancel = src.match(/\{run\.status === 'running' && \(/)
+    const retry = src.match(/\{run\.status === 'failed' && \(/)
+    if (!cancel)
+      throw new Error('the cancel control must be gated on the running status')
+    if (!retry)
+      throw new Error('the retry control must be gated on the failed status')
+  })
+
+  it('dispatches the status icons through the measured set', () => {
+    const src = resultsCode()
+    for (const [status, icon] of [
+      ['completed', 'CheckCircle2'],
+      ['running', 'Loader2'],
+      ['failed', 'XCircle'],
+    ]) {
+      const re = new RegExp(`case '${status}':\\s*\\n\\s*return <${icon} `)
+      if (!re.test(src)) throw new Error(`the ${status} icon must stay ${icon}`)
+    }
+  })
+})
