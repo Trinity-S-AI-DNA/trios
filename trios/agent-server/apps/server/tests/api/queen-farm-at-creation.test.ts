@@ -1,8 +1,14 @@
-import { mkdtempSync, mkdirSync, writeFileSync, existsSync, lstatSync, readdirSync } from 'node:fs'
+import { describe, expect, it } from 'bun:test'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-
-import { describe, expect, it } from 'bun:test'
 
 import { farmNodeModules } from '../../src/api/services/queen-dispatch'
 
@@ -43,12 +49,19 @@ describe('farmNodeModules', () => {
     mkdirSync(join(wt, 'trios/agent-server'), { recursive: true })
     writeFileSync(join(wt, 'trios/agent-server/bun.lock'), 'lock-reuse')
     // A real directory, as a reused tree carries.
-    mkdirSync(join(wt, 'trios/agent-server/node_modules/leftover'), { recursive: true })
+    mkdirSync(join(wt, 'trios/agent-server/node_modules/leftover'), {
+      recursive: true,
+    })
 
-    const proc = Bun.spawnSync(['md5sum', join(wt, 'trios/agent-server/bun.lock')])
+    const proc = Bun.spawnSync([
+      'md5sum',
+      join(wt, 'trios/agent-server/bun.lock'),
+    ])
     const hash = new TextDecoder().decode(proc.stdout).slice(0, 12)
     const store = join(root, 'store')
-    mkdirSync(join(store, hash, 'trios/agent-server/node_modules/clsx'), { recursive: true })
+    mkdirSync(join(store, hash, 'trios/agent-server/node_modules/clsx'), {
+      recursive: true,
+    })
     process.env.TRIOS_MODULE_STORE = store
 
     const said = await farmNodeModules(wt, root)
@@ -66,7 +79,10 @@ describe('farmNodeModules', () => {
     writeFileSync(join(wt, 'trios/agent-server/bun.lock'), 'lock-b')
 
     // The store is keyed by the md5 of the lockfile, so build it the same way.
-    const proc = Bun.spawnSync(['md5sum', join(wt, 'trios/agent-server/bun.lock')])
+    const proc = Bun.spawnSync([
+      'md5sum',
+      join(wt, 'trios/agent-server/bun.lock'),
+    ])
     const hash = new TextDecoder().decode(proc.stdout).slice(0, 12)
     const store = join(root, 'store')
     const nm = join(store, hash, 'trios/agent-server/node_modules')

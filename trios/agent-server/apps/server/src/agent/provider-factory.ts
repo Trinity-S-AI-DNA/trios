@@ -19,7 +19,42 @@ import { logger } from '../lib/logger'
 import { workerModelRanking } from '../lib/model-ranking'
 import { createOpenRouterCompatibleFetch } from '../lib/openrouter-fetch'
 import { createOverloadRetryFetch } from '../lib/overload-retry-fetch'
+import { type ClientErrorInfo, observeClientErrors } from '../lib/request-shape'
 import type { ResolvedAgentConfig } from './types'
+
+/** At most this many diagnostic lines per provider per window, so a refusing endpoint cannot flood the log. */
+const CLIENT_ERROR_LOG_LIMIT = 20
+const CLIENT_ERROR_LOG_WINDOW_MS = 60_000
+
+/**
+ * A bounded log line for a provider's 4xx: status, provider code and request
+ * SHAPE only (lib/request-shape.ts). No key, message, path or model name.
+ */
+export function clientErrorLogger(
+  provider: string,
+  now: () => number = Date.now,
+  emit: (message: string, fields: Record<string, unknown>) => void = (
+    message,
+    fields,
+  ) => logger.warn(message, fields),
+): (info: ClientErrorInfo) => void {
+  let windowStart = 0
+  let count = 0
+  return (info) => {
+    const t = now()
+    if (t - windowStart >= CLIENT_ERROR_LOG_WINDOW_MS) {
+      windowStart = t
+      count = 0
+    }
+    if (count++ >= CLIENT_ERROR_LOG_LIMIT) return
+    emit('Provider refused a request', {
+      provider,
+      status: info.status,
+      code: info.code,
+      shape: info.shape,
+    })
+  }
+}
 
 type ProviderFactory = (
   config: ResolvedAgentConfig,
@@ -161,6 +196,7 @@ function createOpenAICompatibleFactory(
     ...(config.apiKey && { apiKey: config.apiKey }),
     fetch: createOverloadRetryFetch({
       ...workerModelRouting(config.baseUrl),
+      onClientError: clientErrorLogger('openai-compatible'),
       onRetry: ({ attempt, delayMs, reason }) =>
         logger.warn('OpenAI-compatible endpoint overloaded, retrying', {
           baseUrl: config.baseUrl,
@@ -275,7 +311,10 @@ function createZaiFactory(
     // Without this fetch the SDK infers isRetryable from the status alone and
     // retries a request that can never succeed, turning one dead send into
     // "Failed after 3 attempts" plus three upstream errors in the logs.
-    fetch: createOpenRouterCompatibleFetch(),
+    fetch: observeClientErrors(
+      createOpenRouterCompatibleFetch(),
+      clientErrorLogger('zai'),
+    ),
   })
 }
 

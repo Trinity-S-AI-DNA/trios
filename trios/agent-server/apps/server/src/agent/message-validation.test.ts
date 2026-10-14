@@ -7,7 +7,10 @@
 import { describe, expect, test } from 'bun:test'
 import type { UIMessage } from 'ai'
 
-import { filterValidMessages, repairOrphanToolCalls } from './message-validation'
+import {
+  filterValidMessages,
+  repairOrphanToolCalls,
+} from './message-validation'
 
 /** Builds an assistant message carrying a single tool part in `state`. */
 function assistantWithTool(state: string, toolCallId = 'call_1'): UIMessage {
@@ -27,7 +30,9 @@ function assistantWithTool(state: string, toolCallId = 'call_1'): UIMessage {
 
 describe('repairOrphanToolCalls', () => {
   test('gives an interrupted tool call an error result', () => {
-    const [message] = repairOrphanToolCalls([assistantWithTool('input-available')])
+    const [message] = repairOrphanToolCalls([
+      assistantWithTool('input-available'),
+    ])
     const part = message.parts[0] as { state: string; errorText?: string }
 
     expect(part.state).toBe('output-error')
@@ -35,7 +40,9 @@ describe('repairOrphanToolCalls', () => {
   })
 
   test('repairs a call that never left the input-streaming state', () => {
-    const [message] = repairOrphanToolCalls([assistantWithTool('input-streaming')])
+    const [message] = repairOrphanToolCalls([
+      assistantWithTool('input-streaming'),
+    ])
     expect((message.parts[0] as { state: string }).state).toBe('output-error')
   })
 
@@ -49,7 +56,9 @@ describe('repairOrphanToolCalls', () => {
   test('preserves the tool call itself rather than dropping it', () => {
     // Dropping the call as well as the result leaves the model with no record
     // of what it tried, and it repeats the same call forever.
-    const [message] = repairOrphanToolCalls([assistantWithTool('input-available')])
+    const [message] = repairOrphanToolCalls([
+      assistantWithTool('input-available'),
+    ])
     const part = message.parts[0] as { toolCallId: string; input: unknown }
 
     expect(message.parts).toHaveLength(1)
@@ -61,7 +70,13 @@ describe('repairOrphanToolCalls', () => {
     const message = {
       id: 'm1',
       role: 'assistant',
-      parts: [{ type: 'dynamic-tool', toolCallId: 'call_2', state: 'input-available' }],
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolCallId: 'call_2',
+          state: 'input-available',
+        },
+      ],
     } as unknown as UIMessage
 
     const [repaired] = repairOrphanToolCalls([message])
@@ -81,12 +96,18 @@ describe('repairOrphanToolCalls', () => {
 
 describe('filterValidMessages', () => {
   test('repairs orphans while filtering, so a poisoned conversation recovers', () => {
-    const [message] = filterValidMessages([assistantWithTool('input-available')])
+    const [message] = filterValidMessages([
+      assistantWithTool('input-available'),
+    ])
     expect((message.parts[0] as { state: string }).state).toBe('output-error')
   })
 
   test('still drops messages with no parts', () => {
-    const empty = { id: 'e', role: 'assistant', parts: [] } as unknown as UIMessage
+    const empty = {
+      id: 'e',
+      role: 'assistant',
+      parts: [],
+    } as unknown as UIMessage
     expect(filterValidMessages([empty])).toHaveLength(0)
   })
 })

@@ -24,6 +24,20 @@
  * response it would have seen. Non-streaming responses are not touched.
  */
 
+import {
+  EK_ABORT,
+  EK_OTHER,
+  EK_TIMEOUT,
+  RV_RETHROW,
+  retryVerdict,
+} from '../api/services/queen-worktree-keep'
+import {
+  type ClientErrorInfo,
+  describeRequestShape,
+  providerErrorCode,
+  readBodyHead,
+} from './request-shape'
+
 export interface OverloadRetryOptions {
   /** Total attempts including the first. */
   maxAttempts?: number
@@ -51,6 +65,11 @@ export interface OverloadRetryOptions {
     cause?: string,
     keyTag?: string,
   ) => void
+  /**
+   * A 4xx answer, described by shape only (request-shape.ts): never retried,
+   * never changes the response. For diagnosing a provider's 400 from evidence.
+   */
+  onClientError?: (info: ClientErrorInfo) => void
   /** Injectable for tests. */
   fetchImpl?: typeof fetch
   sleep?: (ms: number, signal?: AbortSignal | null) => Promise<void>
@@ -153,11 +172,64 @@ function replay(
   })
 }
 
-/** An abort the caller asked for, rather than a network failure. */
+/**
+ * An abort the caller asked for, rather than a network failure. A
+ * TimeoutError is NOT one: it is a timer firing inside the transport (a hung
+ * socket), and the caller's own cancel is told apart by its signal.
+ */
 export function isAbort(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false
-  const name = (error as { name?: unknown }).name
-  return name === 'AbortError' || name === 'TimeoutError'
+  return (error as { name?: unknown }).name === 'AbortError'
+}
+
+/**
+ * What to do with a thrown error: the card's retry_verdict
+ * (specs/queen/worktree_keep.t27), asked with the facts read here. `counts` is
+ * only whether the failure is an outage worth recording against the model.
+ * Nothing has been handed to the caller at either call site (the first stream
+ * read has not returned yet), so delivered bytes are 0; after the replayed
+ * stream is returned this wrapper is out of the picture and never retries.
+ */
+function judgeFailure(
+  error: unknown,
+  signal: AbortSignal | null | undefined,
+  attempt: number,
+  maxAttempts: number,
+): { rethrow: boolean; counts: boolean } {
+  const callerAborted = signal?.aborted === true
+  const name =
+    typeof error === 'object' && error !== null
+      ? (error as { name?: unknown }).name
+      : undefined
+  const kind = isAbort(error)
+    ? EK_ABORT
+    : name === 'TimeoutError'
+      ? EK_TIMEOUT
+      : EK_OTHER
+  return {
+    rethrow:
+      retryVerdict(callerAborted, kind, 0, attempt, maxAttempts) === RV_RETHROW,
+    counts: kind !== EK_ABORT && !callerAborted,
+  }
+}
+
+/** A 4xx described to the hook; diagnostics never change the answer. */
+async function reportClientError(
+  hook: OverloadRetryOptions['onClientError'],
+  response: Response,
+  body: unknown,
+): Promise<void> {
+  if (!hook || response.status < 400 || response.status >= 500) return
+  const head = await readBodyHead(response.clone())
+  try {
+    hook({
+      status: response.status,
+      code: providerErrorCode(head),
+      shape: describeRequestShape(body),
+    })
+  } catch {
+    // a failing hook is not the request's failure
+  }
 }
 
 interface ParsedBody {
@@ -269,9 +341,9 @@ export function createOverloadRetryFetch(
       try {
         response = await fetchImpl(url, sent)
       } catch (error) {
-        if (signal?.aborted || isAbort(error)) throw error
-        outcome('overloaded', 'threw')
-        if (last) throw error
+        const failure = judgeFailure(error, signal, attempt, maxAttempts)
+        if (failure.counts) outcome('overloaded', 'threw')
+        if (failure.rethrow) throw error
         const delayMs = waitBeforeNext()
         options.onRetry?.({
           attempt,
@@ -297,6 +369,10 @@ export function createOverloadRetryFetch(
         continue
       }
 
+      // A 4xx is never retried (the request itself is refused). It is only
+      // described, by shape: status, provider code, roles and part types.
+      await reportClientError(options.onClientError, response, sent?.body)
+
       const contentType = response.headers.get('content-type') ?? ''
       if (
         !response.ok ||
@@ -308,7 +384,28 @@ export function createOverloadRetryFetch(
       }
 
       const reader = response.body.getReader()
-      const { bytes, done } = await peekFirstEvent(reader)
+      // Nothing has been handed to the caller yet, so a read that throws here
+      // (a transport TimeoutError, a reset) is retried like a throw from
+      // fetch itself. Once the replayed stream is returned below, this
+      // wrapper never retries: delivered bytes may already have run tools.
+      let peeked: { bytes: Uint8Array; done: boolean }
+      try {
+        peeked = await peekFirstEvent(reader)
+      } catch (error) {
+        await reader.cancel().catch(() => {})
+        const failure = judgeFailure(error, signal, attempt, maxAttempts)
+        if (failure.counts) outcome('overloaded', 'threw')
+        if (failure.rethrow) throw error
+        const delayMs = waitBeforeNext()
+        options.onRetry?.({
+          attempt,
+          delayMs,
+          reason: `stream read threw: ${error instanceof Error ? error.message : String(error)}`,
+        })
+        await sleep(delayMs, signal)
+        continue
+      }
+      const { bytes, done } = peeked
       const reason = streamErrorInFirstEvent(new TextDecoder().decode(bytes))
       if (reason === null) {
         outcome('ok')

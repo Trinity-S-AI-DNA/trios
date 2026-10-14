@@ -56,6 +56,7 @@ import {
 } from './queen-dispatch'
 import { runnerClaimsNow } from './queen-events'
 import { queenLeaseDatabaseUrl } from './queen-lease'
+import { claimsAgainAtOnce } from './queen-worktree-keep'
 
 export interface BeeOrder {
   /** The task's agent domain (specs/queen/domains.t27), when the order has one. */
@@ -235,6 +236,13 @@ export async function storeBundle(
   })
 }
 
+export interface RunOneDeps {
+  /** Starts the claimed bee; the real one by default. A test fakes the room. */
+  runClaimed?: typeof runClaimedBee
+  /** How often the ending is waited on; waitForEnding's own default. */
+  endingEveryMs?: number
+}
+
 /**
  * One order, start to finish. Resolves when the bee has ended and its work is
  * where the publisher can fetch it, so the caller may then take another.
@@ -242,6 +250,7 @@ export async function storeBundle(
 export async function runOneOrder(
   pool: Pool,
   runner: string,
+  deps: RunOneDeps = {},
 ): Promise<BeeOrder | null> {
   const order = await claimQueuedBee(pool, runner, lastDomain)
   if (!order) return null
@@ -265,9 +274,14 @@ export async function runOneOrder(
   // heartbeat, and the lease must say this runtime is alive from the claim on.
   await beatForBees(pool, [order.issue])
   try {
-    const outcome = await runClaimedBee(pool, order)
-    if (!outcome.started) return order
-    await waitForEnding(pool, order, runner)
+    const outcome = await (deps.runClaimed ?? runClaimedBee)(pool, order)
+    if (!outcome.started) {
+      // Not started (a blocked resource, for one): the caller must not ask
+      // again at once, or it spins on the same refusal.
+      markNotStarted(order)
+      return order
+    }
+    await waitForEnding(pool, order, runner, deps.endingEveryMs)
     // The row stopped matching. When this runner's own drain wrote the ending
     // the turn is already over and this does nothing; when the Queen ended the
     // row instead - a cancel (control card section 3), a reap, a re-dispatch -
@@ -289,6 +303,22 @@ export async function runOneOrder(
   } finally {
     inFlight.delete(order.issue)
   }
+}
+
+/**
+ * Orders a runner claimed and could not start. startBeeRunner reads it to wait
+ * for the next poll instead of claiming again through setImmediate.
+ */
+const notStarted = new WeakSet<BeeOrder>()
+
+/** Record that this order was claimed and not started (runOneOrder does). */
+export function markNotStarted(order: BeeOrder): void {
+  notStarted.add(order)
+}
+
+/** Whether runOneOrder returned this order without starting its bee. */
+export function orderWasNotStarted(order: BeeOrder): boolean {
+  return notStarted.has(order)
 }
 
 /** The orders this process is carrying right now, by issue. */
@@ -323,6 +353,48 @@ export async function beatForBees(
     })
     return []
   }
+}
+
+export interface TakerDeps {
+  slots: number
+  runOne: () => Promise<BeeOrder | null>
+  /** Runs `next` soon, without waiting for the poll (setImmediate in the server). */
+  schedule: (next: () => void) => void
+  stopped: () => boolean
+  onError: (error: unknown) => void
+}
+
+/**
+ * The claim loop of one runner: up to `slots` claims at once. A claim that
+ * found work asks again at once - a replica that waits out its interval
+ * between bees is idle for no reason - unless the card says otherwise: an
+ * order that was claimed and could not start (a blocked resource) waits for
+ * the next poll, claims_again_at_once.
+ */
+export function createTaker(deps: TakerDeps): {
+  take: () => void
+  busy: () => number
+} {
+  let busy = 0
+  const take = (): void => {
+    if (deps.stopped() || busy >= deps.slots) return
+    busy += 1
+    deps
+      .runOne()
+      .then((order) => {
+        if (
+          order &&
+          !deps.stopped() &&
+          claimsAgainAtOnce(!orderWasNotStarted(order))
+        )
+          deps.schedule(take)
+      })
+      .catch(deps.onError)
+      .finally(() => {
+        busy -= 1
+      })
+  }
+  return { take, busy: () => busy }
 }
 
 /** The runner this process started, so a shutdown can drain it. */
@@ -490,30 +562,21 @@ export function startBeeRunner(): void {
   const runner = runnerName()
   const slots = runnerSlots()
   const pool = createQueenPool(url)
-  let busy = 0
   let stopped = false
   logger.info('Bee runner starting', { runner, slots, everySeconds: every })
 
-  const take = (): void => {
-    if (stopped || busy >= slots) return
-    busy += 1
-    runOneOrder(pool, runner)
-      .then((order) => {
-        // A claim that found work asks again at once: a replica that waits out
-        // its interval between bees is a replica idle for no reason, and the
-        // queue is where the pacing belongs.
-        if (order && !stopped) setImmediate(take)
-      })
-      .catch((error) => {
-        logger.warn('Bee runner round failed', {
-          runner,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      })
-      .finally(() => {
-        busy -= 1
-      })
-  }
+  const taker = createTaker({
+    slots,
+    runOne: () => runOneOrder(pool, runner),
+    schedule: (next) => setImmediate(next),
+    stopped: () => stopped,
+    onError: (error) =>
+      logger.warn('Bee runner round failed', {
+        runner,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+  })
+  const take = taker.take
 
   // The heartbeat runs on its own clock, apart from the claim loop, so a bee
   // whose worktree is still being prepared is vouched for as well. It is NOT
@@ -535,7 +598,7 @@ export function startBeeRunner(): void {
   const timer = setInterval(() => {
     // Every free slot, not one: a replica with four slots and four orders
     // waiting should be carrying four bees, not one a minute.
-    for (let slot = busy; slot < slots; slot++) take()
+    for (let slot = taker.busy(); slot < slots; slot++) take()
   }, every * 1000)
   take()
 
@@ -544,7 +607,7 @@ export function startBeeRunner(): void {
   // this runner came up with free slots (worker.idle) instead of finding out
   // at her next round.
   const stopReading = addControlEventReader(({ kind }) => {
-    if (!stopped && runnerClaimsNow(kind, slots - busy)) take()
+    if (!stopped && runnerClaimsNow(kind, slots - taker.busy())) take()
   })
   followControlEvents(pool)
     .then(() => publishEvent(pool, 'queen/worker.idle', { slots }))

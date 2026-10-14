@@ -121,7 +121,10 @@ describe('loadTasks', () => {
   it('wraps a read failure with the cause attached', async () => {
     let caught: unknown
     try {
-      await loadTasks({ type: 'file', path: join(tmpdir(), 'missing-file.jsonl') })
+      await loadTasks({
+        type: 'file',
+        path: join(tmpdir(), 'missing-file.jsonl'),
+      })
     } catch (e) {
       caught = e
     }

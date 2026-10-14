@@ -11,9 +11,9 @@
 
 import { Inngest, type InngestFunction } from 'inngest'
 import {
+  dispatchWorkflow,
   type FetchLike,
   type GitHubApi,
-  dispatchWorkflow,
   openOrReuseIssue,
   skillIssueBody,
 } from './dispatch'

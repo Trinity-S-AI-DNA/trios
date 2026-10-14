@@ -52,14 +52,21 @@ describe('streamErrorInFirstEvent', () => {
 
 describe('createOverloadRetryFetch', () => {
   it('retries an in-stream overload and hands on the good stream intact', async () => {
-    const seq = sequence([() => sse(OVERLOADED), () => sse(OVERLOADED), () => sse(GOOD)])
+    const seq = sequence([
+      () => sse(OVERLOADED),
+      () => sse(OVERLOADED),
+      () => sse(GOOD),
+    ])
     const retries: string[] = []
     const f = createOverloadRetryFetch({
       fetchImpl: seq.fetchImpl,
       sleep: noSleep,
       onRetry: (i) => retries.push(i.reason),
     })
-    const res = await f('https://example.test/v1/chat/completions', { method: 'POST', body: '{}' })
+    const res = await f('https://example.test/v1/chat/completions', {
+      method: 'POST',
+      body: '{}',
+    })
     assert.strictEqual(res.status, 200)
     assert.strictEqual(await res.text(), GOOD)
     assert.strictEqual(seq.calls(), 3)
@@ -75,7 +82,10 @@ describe('createOverloadRetryFetch', () => {
       () => new Response('slow', { status: 429 }),
       () => sse(GOOD),
     ])
-    const f = createOverloadRetryFetch({ fetchImpl: seq.fetchImpl, sleep: noSleep })
+    const f = createOverloadRetryFetch({
+      fetchImpl: seq.fetchImpl,
+      sleep: noSleep,
+    })
     const res = await f('https://example.test/', {})
     assert.strictEqual(res.status, 200)
     assert.strictEqual(seq.calls(), 3)
@@ -83,7 +93,11 @@ describe('createOverloadRetryFetch', () => {
 
   it('gives up as a 503 with the endpoint words after maxAttempts', async () => {
     const seq = sequence([() => sse(OVERLOADED)])
-    const f = createOverloadRetryFetch({ fetchImpl: seq.fetchImpl, sleep: noSleep, maxAttempts: 3 })
+    const f = createOverloadRetryFetch({
+      fetchImpl: seq.fetchImpl,
+      sleep: noSleep,
+      maxAttempts: 3,
+    })
     const res = await f('https://example.test/', {})
     assert.strictEqual(res.status, 503)
     assert.match(await res.text(), /Service temporarily overloaded/)
@@ -91,11 +105,26 @@ describe('createOverloadRetryFetch', () => {
   })
 
   it('does not touch a non-streaming or a 4xx response', async () => {
-    const seq = sequence([() => new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } })])
-    const f = createOverloadRetryFetch({ fetchImpl: seq.fetchImpl, sleep: noSleep })
-    assert.strictEqual(await (await f('https://example.test/', {})).text(), '{"ok":true}')
+    const seq = sequence([
+      () =>
+        new Response('{"ok":true}', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ])
+    const f = createOverloadRetryFetch({
+      fetchImpl: seq.fetchImpl,
+      sleep: noSleep,
+    })
+    assert.strictEqual(
+      await (await f('https://example.test/', {})).text(),
+      '{"ok":true}',
+    )
     const bad = sequence([() => new Response('nope', { status: 400 })])
-    const g = createOverloadRetryFetch({ fetchImpl: bad.fetchImpl, sleep: noSleep })
+    const g = createOverloadRetryFetch({
+      fetchImpl: bad.fetchImpl,
+      sleep: noSleep,
+    })
     assert.strictEqual((await g('https://example.test/', {})).status, 400)
     assert.strictEqual(bad.calls(), 1)
   })
@@ -122,7 +151,11 @@ describe('createOverloadRetryFetch', () => {
       always += 1
       throw new Error('read ECONNRESET')
     }) as unknown as typeof fetch
-    const g = createOverloadRetryFetch({ fetchImpl: dead, sleep: noSleep, maxAttempts: 3 })
+    const g = createOverloadRetryFetch({
+      fetchImpl: dead,
+      sleep: noSleep,
+      maxAttempts: 3,
+    })
     await assert.rejects(() => g('https://example.test/', {}), /ECONNRESET/)
     assert.strictEqual(always, 3)
   })
@@ -150,8 +183,167 @@ describe('createOverloadRetryFetch', () => {
         c.close()
       },
     })
-    const seq = sequence([() => new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })])
-    const f = createOverloadRetryFetch({ fetchImpl: seq.fetchImpl, sleep: noSleep })
-    assert.strictEqual(await (await f('https://example.test/', {})).text(), GOOD)
+    const seq = sequence([
+      () =>
+        new Response(body, {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        }),
+    ])
+    const f = createOverloadRetryFetch({
+      fetchImpl: seq.fetchImpl,
+      sleep: noSleep,
+    })
+    assert.strictEqual(
+      await (await f('https://example.test/', {})).text(),
+      GOOD,
+    )
+  })
+
+  const timeoutError = () => {
+    const error = new Error('The operation timed out')
+    error.name = 'TimeoutError'
+    return error
+  }
+
+  it('retries a transport TimeoutError while the caller signal is live', async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      if (calls < 3) throw timeoutError()
+      return sse(GOOD)
+    }) as unknown as typeof fetch
+    const controller = new AbortController()
+    const f = createOverloadRetryFetch({ fetchImpl, sleep: noSleep })
+    const res = await f('https://example.test/', { signal: controller.signal })
+    assert.strictEqual(await res.text(), GOOD)
+    assert.strictEqual(calls, 3)
+  })
+
+  it('gives up a TimeoutError after the existing attempt budget', async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      throw timeoutError()
+    }) as unknown as typeof fetch
+    const f = createOverloadRetryFetch({
+      fetchImpl,
+      sleep: noSleep,
+      maxAttempts: 3,
+    })
+    await assert.rejects(() => f('https://example.test/', {}), /timed out/)
+    assert.strictEqual(calls, 3)
+  })
+
+  it('throws at once when the caller signal is aborted, whatever the error', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    controller.abort()
+    const fetchImpl = (async () => {
+      calls += 1
+      throw timeoutError()
+    }) as unknown as typeof fetch
+    const f = createOverloadRetryFetch({ fetchImpl, sleep: noSleep })
+    await assert.rejects(() =>
+      f('https://example.test/', { signal: controller.signal }),
+    )
+    assert.strictEqual(calls, 1)
+  })
+
+  it('retries when the FIRST stream read throws a TimeoutError', async () => {
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      if (calls > 1) return sse(GOOD)
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          controller.error(timeoutError())
+        },
+      })
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+    const f = createOverloadRetryFetch({ fetchImpl, sleep: noSleep })
+    const res = await f('https://example.test/', {})
+    assert.strictEqual(await res.text(), GOOD)
+    assert.strictEqual(calls, 2)
+  })
+
+  it('does not retry the first stream read when the caller aborted', async () => {
+    let calls = 0
+    const controller = new AbortController()
+    const fetchImpl = (async () => {
+      calls += 1
+      const body = new ReadableStream<Uint8Array>({
+        pull(c) {
+          controller.abort()
+          c.error(timeoutError())
+        },
+      })
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+    const f = createOverloadRetryFetch({ fetchImpl, sleep: noSleep })
+    await assert.rejects(() =>
+      f('https://example.test/', { signal: controller.signal }),
+    )
+    assert.strictEqual(calls, 1)
+  })
+
+  it('describes a 400 by shape, does not retry it, and leaves the answer alone', async () => {
+    const bad = sequence([
+      () =>
+        new Response('{"error":{"code":"1214","message":"LEAKY"}}', {
+          status: 400,
+        }),
+    ])
+    const seen: unknown[] = []
+    const f = createOverloadRetryFetch({
+      fetchImpl: bad.fetchImpl,
+      sleep: noSleep,
+      onClientError: (info) => seen.push(info),
+    })
+    const body = JSON.stringify({
+      model: 'm',
+      messages: [{ role: 'user', content: 'SECRET' }],
+    })
+    const res = await f('https://example.test/', { method: 'POST', body })
+    assert.strictEqual(res.status, 400)
+    assert.match(await res.text(), /LEAKY/)
+    assert.strictEqual(bad.calls(), 1)
+    assert.strictEqual(seen.length, 1)
+    assert.doesNotMatch(JSON.stringify(seen), /SECRET|LEAKY/)
+    assert.match(JSON.stringify(seen), /"code":"1214"/)
+  })
+
+  it('never replays after bytes were delivered (negative noReplay test)', async () => {
+    const encoder = new TextEncoder()
+    let calls = 0
+    const fetchImpl = (async () => {
+      calls += 1
+      let sent = false
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!sent) {
+            sent = true
+            controller.enqueue(encoder.encode(`${GOOD.split('\n\n')[0]}\n\n`))
+            return
+          }
+          controller.error(timeoutError())
+        },
+      })
+      return new Response(body, {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    }) as unknown as typeof fetch
+    const f = createOverloadRetryFetch({ fetchImpl, sleep: noSleep })
+    const res = await f('https://example.test/', {})
+    await assert.rejects(() => res.text(), /timed out/)
+    assert.strictEqual(calls, 1)
   })
 })

@@ -17,11 +17,100 @@ import { NLTK_STOP_WORDS } from '../../src/tools/acl/acl-stopwords'
 /** Function words that the vocabulary must recognise, grouped by class. */
 const WORD_CLASSES: Record<string, string[]> = {
   articles: ['a', 'an', 'the'],
-  prepositions: ['of', 'in', 'on', 'at', 'by', 'for', 'to', 'from', 'with', 'into', 'between', 'through', 'under', 'over', 'above', 'below', 'against', 'before', 'after', 'until', 'during'],
-  pronouns: ['he', 'she', 'it', 'they', 'them', 'themselves', 'yourself', 'ours', 'my', 'his', 'her', 'their', 'this', 'that', 'these', 'those', 'who', 'whom', 'which', 'what'],
+  prepositions: [
+    'of',
+    'in',
+    'on',
+    'at',
+    'by',
+    'for',
+    'to',
+    'from',
+    'with',
+    'into',
+    'between',
+    'through',
+    'under',
+    'over',
+    'above',
+    'below',
+    'against',
+    'before',
+    'after',
+    'until',
+    'during',
+  ],
+  pronouns: [
+    'he',
+    'she',
+    'it',
+    'they',
+    'them',
+    'themselves',
+    'yourself',
+    'ours',
+    'my',
+    'his',
+    'her',
+    'their',
+    'this',
+    'that',
+    'these',
+    'those',
+    'who',
+    'whom',
+    'which',
+    'what',
+  ],
   conjunctions: ['and', 'but', 'or', 'nor', 'so', 'than', 'because', 'while'],
-  auxiliaries: ['is', 'was', 'were', 'have', 'has', 'had', 'do', 'does', 'did', 'doing', 'be', 'been', 'being', 'will', 'should'],
-  adverbsAndQuantifiers: ['very', 'too', 'just', 'now', 'here', 'there', 'then', 'again', 'further', 'once', 'only', 'own', 'same', 'such', 'each', 'few', 'more', 'most', 'other', 'some', 'any', 'all', 'both', 'out', 'up', 'down', 'off', 'not', 'no'],
+  auxiliaries: [
+    'is',
+    'was',
+    'were',
+    'have',
+    'has',
+    'had',
+    'do',
+    'does',
+    'did',
+    'doing',
+    'be',
+    'been',
+    'being',
+    'will',
+    'should',
+  ],
+  adverbsAndQuantifiers: [
+    'very',
+    'too',
+    'just',
+    'now',
+    'here',
+    'there',
+    'then',
+    'again',
+    'further',
+    'once',
+    'only',
+    'own',
+    'same',
+    'such',
+    'each',
+    'few',
+    'more',
+    'most',
+    'other',
+    'some',
+    'any',
+    'all',
+    'both',
+    'out',
+    'up',
+    'down',
+    'off',
+    'not',
+    'no',
+  ],
   questionWords: ['when', 'where', 'why', 'how'],
 }
 
@@ -58,9 +147,19 @@ const CONTRACTIONS: Array<[full: string, stem: string]> = [
  * the list holds bare tokens only.
  */
 const NON_MEMBERS = [
-  'computer', 'house', 'zebra', 'quickly', 'runner',
-  'The', 'And', 'IT', 'You',
-  '', ' the ', 'the ', ' th',
+  'computer',
+  'house',
+  'zebra',
+  'quickly',
+  'runner',
+  'The',
+  'And',
+  'IT',
+  'You',
+  '',
+  ' the ',
+  'the ',
+  ' th',
 ]
 
 describe('aclStopwordsContract', () => {
@@ -72,20 +171,32 @@ describe('aclStopwordsContract', () => {
     // Function words of every class are members.
     for (const [wordClass, words] of Object.entries(WORD_CLASSES)) {
       for (const word of words) {
-        expect(NLTK_STOP_WORDS.has(word), `expected ${wordClass} word "${word}" to be a stop word`).toBe(true)
+        expect(
+          NLTK_STOP_WORDS.has(word),
+          `expected ${wordClass} word "${word}" to be a stop word`,
+        ).toBe(true)
       }
     }
 
     // Contractions are members in both spellings: whole and truncated stem.
     for (const [full, stem] of CONTRACTIONS) {
-      expect(NLTK_STOP_WORDS.has(full), `expected contraction "${full}" to be a stop word`).toBe(true)
-      expect(NLTK_STOP_WORDS.has(stem), `expected truncated stem "${stem}" to be a stop word`).toBe(true)
+      expect(
+        NLTK_STOP_WORDS.has(full),
+        `expected contraction "${full}" to be a stop word`,
+      ).toBe(true)
+      expect(
+        NLTK_STOP_WORDS.has(stem),
+        `expected truncated stem "${stem}" to be a stop word`,
+      ).toBe(true)
     }
 
     // The eight single-letter tokens the list keeps are all members; a list
     // that silently dropped one-letter entries would let "i" and "a" through.
     for (const letter of ['a', 'd', 'i', 'm', 'o', 's', 't', 'y']) {
-      expect(NLTK_STOP_WORDS.has(letter), `expected single letter "${letter}" to be a stop word`).toBe(true)
+      expect(
+        NLTK_STOP_WORDS.has(letter),
+        `expected single letter "${letter}" to be a stop word`,
+      ).toBe(true)
     }
 
     // Content words are not members: the list removes function words only.
@@ -93,17 +204,31 @@ describe('aclStopwordsContract', () => {
     // consumer must lowercase its token first. Padded and empty strings are
     // not members: the list holds bare tokens.
     for (const word of NON_MEMBERS) {
-      expect(NLTK_STOP_WORDS.has(word), `expected "${word}" not to be a stop word`).toBe(false)
+      expect(
+        NLTK_STOP_WORDS.has(word),
+        `expected "${word}" not to be a stop word`,
+      ).toBe(false)
     }
 
     // Every member is a bare lowercase token: non-empty, letters and internal
     // apostrophes only, never padded, never capitalised, never quoted.
     const members = [...NLTK_STOP_WORDS]
-    expect(members.length, 'iteration must yield the whole vocabulary').toBe(NLTK_STOP_WORDS.size)
+    expect(members.length, 'iteration must yield the whole vocabulary').toBe(
+      NLTK_STOP_WORDS.size,
+    )
     for (const word of members) {
-      expect(/^[a-z']+$/.test(word), `member "${word}" must be lowercase letters with at most internal apostrophes`).toBe(true)
-      expect(word.startsWith("'"), `member "${word}" must not begin with an apostrophe`).toBe(false)
-      expect(word.endsWith("'"), `member "${word}" must not end with an apostrophe`).toBe(false)
+      expect(
+        /^[a-z']+$/.test(word),
+        `member "${word}" must be lowercase letters with at most internal apostrophes`,
+      ).toBe(true)
+      expect(
+        word.startsWith("'"),
+        `member "${word}" must not begin with an apostrophe`,
+      ).toBe(false)
+      expect(
+        word.endsWith("'"),
+        `member "${word}" must not end with an apostrophe`,
+      ).toBe(false)
     }
 
     // The vocabulary counts 198 words as the module stands today; a shorter
