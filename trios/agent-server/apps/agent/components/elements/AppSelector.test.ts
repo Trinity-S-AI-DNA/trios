@@ -15,18 +15,18 @@
  * the integrations hook with no data, the sync with a settled
  * status, the metrics track (a no-op - its real module pulls the
  * adapter graph other suites stub incompletely), and the storage
- * fake underneath the graph's own items; the server store itself
- * stays real - useMcpServers starts from an empty useState and only
- * reads its item inside an effect a static render never runs, and
- * mock.module registrations persist for every file that links after
- * this one, so leaving the store's module unmocked keeps later
- * suites reading it through their own storage fakes. Radix portals
- * never flush through a static render, so the popover kit is
- * stubbed with a portal-free stand-in that keeps the real kit's
- * contract: the trigger always renders, the content only while
- * open. Measured, the static render goes through and answers the
- * trigger with the children handed in, while the popover stays
- * closed as the selector first mounts and leaks none of its content.
+ * fake underneath the graph's own items; the server store's hook
+ * answers the empty list the closed mount renders, while its item
+ * proxies the storage facade at call time - mock.module
+ * registrations persist for every file that links after this one,
+ * and the schedules suite seeds the enabled servers through this
+ * very module via its OWN storage fake. Radix portals never flush
+ * through a static render, so the popover kit is stubbed with a
+ * portal-free stand-in that keeps the real kit's contract: the
+ * trigger always renders, the content only while open. Measured,
+ * the static render goes through and answers the trigger with the
+ * children handed in, while the popover stays closed as the
+ * selector first mounts and leaks none of its content.
  *
  * Not pinned, and why (issue User Story 2): the open popover - the
  * search box, the app list and the manage-apps control - sits behind
@@ -68,13 +68,39 @@ mock.module('@wxt-dev/storage', () => ({
   },
 }))
 
-// The MCP server store stays REAL: useMcpServers starts from an empty
-// useState and only reads the item inside an effect, which a static
-// render never runs - so the closed mount sees the same empty list a
-// stub would give, while later suites keep the real module's item
-// reading through THEIR OWN storage fake (mock.module registrations
-// persist for every file that links after this one, and the
-// schedules suite reads the enabled servers through this very module).
+// The MCP server store is mocked with a live proxy. mock.module
+// registrations persist and serve every file that links after this
+// one, and the schedules suite reads the enabled servers through
+// this very module while seeding them via its OWN storage fake -
+// so a stand-in closing over this file's own fake would starve it.
+// The proxy resolves the storage facade at call time instead, and
+// a later suite's own storage registration serves the reads, while
+// the hook itself answers the empty list the closed mount renders.
+const mcpServersStub = {
+  servers: [] as never[],
+  addServer: () => {},
+  removeServer: () => {},
+}
+
+class McpServerStub {}
+
+mock.module('@/lib/mcp/mcpServerStorage', () => ({
+  McpServer: McpServerStub,
+  mcpServerStorage: {
+    getValue: async () => {
+      const { storage } = await import('@wxt-dev/storage')
+      return storage.defineItem('local:mcpServers', { fallback: [] }).getValue()
+    },
+    setValue: async (value: unknown) => {
+      const { storage } = await import('@wxt-dev/storage')
+      await storage
+        .defineItem<unknown>('local:mcpServers', { fallback: [] })
+        .setValue(value)
+    },
+    watch: () => () => {},
+  },
+  useMcpServers: () => mcpServersStub,
+}))
 
 mock.module('@/lib/mcp/useSyncRemoteIntegrations', () => ({
   useSyncRemoteIntegrations: () => ({ isSyncing: false, hasSynced: true }),
@@ -137,7 +163,16 @@ mock.module('@/components/ui/popover', () => ({
     children ?? null,
 }))
 
-const { AppSelector } = await import('./AppSelector')
+// The subject is read through a query-qualified specifier so this
+// suite's graph loads as its own fresh module instances instead of
+// through the shared cache the earlier files of the group already
+// populated: the shared seams below bind to this file's own
+// registrations for this render, whatever the files before it left
+// live.
+const subjectUrl = './AppSelector?app-selector-suite-real'
+const { AppSelector } = (await import(
+  subjectUrl
+)) as typeof import('./AppSelector')
 
 // The subject's props make children required, and createElement's
 // typing only accepts children as its third argument when the props
