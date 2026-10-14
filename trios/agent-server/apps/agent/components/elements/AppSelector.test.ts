@@ -11,18 +11,22 @@
  *
  * The selector reads the MCP server store, the managed-server
  * mutations, the servers list, the user integrations and the remote
- * sync, so each seam is stubbed with a full stand-in: the store with
- * an empty server list and its mutators, the mutation/list/hooks
- * with idle captures, the integrations hook with no data, the sync
- * with a settled status, the metrics track (a no-op - its real module
- * pulls the adapter graph other suites stub incompletely), and the
- * storage fake underneath the graph's own items. Radix portals never
- * flush through a static render, so the popover kit is stubbed with
- * a portal-free stand-in that keeps the real kit's contract: the
- * trigger always renders, the content only while open. Measured, the
- * static render goes through and answers the trigger with the
- * children handed in, while the popover stays closed as the selector
- * first mounts and leaks none of its content.
+ * sync. The mutation and list hooks are stubbed with idle captures,
+ * the integrations hook with no data, the sync with a settled
+ * status, the metrics track (a no-op - its real module pulls the
+ * adapter graph other suites stub incompletely), and the storage
+ * fake underneath the graph's own items; the server store itself
+ * stays real - useMcpServers starts from an empty useState and only
+ * reads its item inside an effect a static render never runs, and
+ * mock.module registrations persist for every file that links after
+ * this one, so leaving the store's module unmocked keeps later
+ * suites reading it through their own storage fakes. Radix portals
+ * never flush through a static render, so the popover kit is
+ * stubbed with a portal-free stand-in that keeps the real kit's
+ * contract: the trigger always renders, the content only while
+ * open. Measured, the static render goes through and answers the
+ * trigger with the children handed in, while the popover stays
+ * closed as the selector first mounts and leaks none of its content.
  *
  * Not pinned, and why (issue User Story 2): the open popover - the
  * search box, the app list and the manage-apps control - sits behind
@@ -64,15 +68,13 @@ mock.module('@wxt-dev/storage', () => ({
   },
 }))
 
-mock.module('@/lib/mcp/mcpServerStorage', () => ({
-  McpServer: class {},
-  mcpServerStorage: fakeItem('local:mcp-servers', { fallback: [] }),
-  useMcpServers: () => ({
-    servers: [],
-    addServer: () => {},
-    removeServer: () => {},
-  }),
-}))
+// The MCP server store stays REAL: useMcpServers starts from an empty
+// useState and only reads the item inside an effect, which a static
+// render never runs - so the closed mount sees the same empty list a
+// stub would give, while later suites keep the real module's item
+// reading through THEIR OWN storage fake (mock.module registrations
+// persist for every file that links after this one, and the
+// schedules suite reads the enabled servers through this very module).
 
 mock.module('@/lib/mcp/useSyncRemoteIntegrations', () => ({
   useSyncRemoteIntegrations: () => ({ isSyncing: false, hasSynced: true }),
