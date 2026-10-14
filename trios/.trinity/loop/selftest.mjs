@@ -202,7 +202,7 @@ check('a draft whose criteria need an unavailable tool is refused', () => {
 })
 
 check('a non-ASCII draft is refused (law L3)', () => {
-  const r = G.gate(draft('ru.md', GOOD.replace('A real defect', 'A real defect -проверка')))
+  const r = G.gate(draft('ru.md', GOOD.replace('A real defect', 'A real defect -\u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0430')))
   if (!r.problems.some((p) => /non-ASCII/.test(p))) throw new Error('accepted non-ASCII')
 })
 
@@ -299,7 +299,7 @@ check('a real criterion IS read as a promise', () => {
 
 // THE BOUNDARY THIS TOOL COULD NOT READ, IT CALLED EMPTY.
 //
-// `## Границы` opens a boundary section - CLAUDE.md says so, the server's
+// The Russian boundary heading (Granitsy) opens a boundary section - CLAUDE.md says so, the server's
 // `boundaryPathsOf` (queen-tick.ts:576) obeys it and brief-gate.mjs:43 ports
 // it. This file was the third copy and read English alone, so seven briefs were
 // parsed as declaring no boundary and every file their bees touched was
@@ -308,7 +308,7 @@ check('a real criterion IS read as a promise', () => {
 // never the brief being silent.
 
 check('a Russian boundary heading is a boundary', () => {
-  const b = VA.boundaryOf('## Границы\n\n`rings/SR-00/QueenLocalisation.swift`\n')
+  const b = VA.boundaryOf('## \u0413\u0440\u0430\u043d\u0438\u0446\u044b\n\n`rings/SR-00/QueenLocalisation.swift`\n')
   if (b.reason !== 'ok') throw new Error(`read the section as ${b.reason}`)
   if (!b.paths.includes('rings/SR-00/QueenLocalisation.swift')) throw new Error(`took ${JSON.stringify(b.paths)}`)
 })
@@ -319,7 +319,7 @@ check('an English boundary heading still is', () => {
 })
 
 check('a boundary that names no readable path accuses nobody', () => {
-  const b = VA.boundaryOf('## Границы\n\nthe queen tab and nothing else\n')
+  const b = VA.boundaryOf('## \u0413\u0440\u0430\u043d\u0438\u0446\u044b\n\nthe queen tab and nothing else\n')
   if (b.reason !== 'unreadable') throw new Error(`reason was ${b.reason}`)
   if (b.paths.length) throw new Error(`invented ${JSON.stringify(b.paths)}`)
 })
@@ -331,7 +331,7 @@ check('no boundary section at all is reported as absent, not as empty', () => {
 })
 
 check('a second path on one boundary line is counted, not taken - the server takes the first and stops', () => {
-  const b = VA.boundaryOf('## Границы\n\n`rings/SR-02/ChatViewModel.swift` и `main.swift`\n')
+  const b = VA.boundaryOf('## \u0413\u0440\u0430\u043d\u0438\u0446\u044b\n\n`rings/SR-02/ChatViewModel.swift` \u0438 `main.swift`\n')
   if (b.paths.length !== 1) throw new Error(`took ${b.paths.length}, diverging from the server`)
   if (b.extra !== 1) throw new Error(`did not report the path the bee never got, extra=${b.extra}`)
 })
@@ -381,7 +381,7 @@ check('all three boundary parsers know the same two headings', () => {
     const line = src.split('\n').find((l) => /inside\s*=\s*line\.startsWith/.test(l))
     if (!line) { missing.push(`${name}: no boundary heading test found`); continue }
     if (!line.includes("'## Boundary'")) missing.push(`${name}: does not know '## Boundary'`)
-    if (!line.includes("'## Границы'")) missing.push(`${name}: does not know '## Границы'`)
+    if (!line.includes("'## \u0413\u0440\u0430\u043d\u0438\u0446\u044b'")) missing.push(`${name}: does not know the Granitsy heading`)
   }
   if (missing.length) throw new Error(missing.join('; '))
 })
@@ -852,13 +852,13 @@ check('an empty or absent reason is not a licence to release', () => {
 })
 
 check('a body asking for a person in Russian is recognised', () => {
-  const body = '# T\n\n## Почему жду слова\n\nThe tabs are what you see every day.\n\n## Готово, когда\n\n- it builds\n'
+  const body = '# T\n\n## \u041f\u043e\u0447\u0435\u043c\u0443 \u0436\u0434\u0443 \u0441\u043b\u043e\u0432\u0430\n\nThe tabs are what you see every day.\n\n## \u0413\u043e\u0442\u043e\u0432\u043e, \u043a\u043e\u0433\u0434\u0430\n\n- it builds\n'
   const asks = SE.bodyAsksForAPerson(body)
   if (!asks) throw new Error('the heading that saved #1244 was not recognised')
 })
 
 check('the phrase only counts as a HEADING, not anywhere in prose', () => {
-  const body = '# T\n\nSome bee once wrote почему жду слова in a sentence.\n\n## Success Criteria\n\n- it builds\n'
+  const body = '# T\n\nSome bee once wrote \u043f\u043e\u0447\u0435\u043c\u0443 \u0436\u0434\u0443 \u0441\u043b\u043e\u0432\u0430 in a sentence.\n\n## Success Criteria\n\n- it builds\n'
   eq(SE.bodyAsksForAPerson(body), null, 'a phrase in prose is not a request')
 })
 
@@ -884,6 +884,84 @@ check('the parser probe is rebuilt when the parser is newer than the binary', ()
   if (!/mtimeMs/.test(src)) {
     throw new Error('a cached probe older than the parser would mask the very change this tool exists to notice')
   }
+})
+
+// ---------------------------------------------------------------------------
+// The noise filter that cannot delete the answer it was filtering. This is the
+// #1422 defect, planted: the first version of the filter dropped any line
+// CONTAINING the banner words, so a single-line JSON answer whose review note
+// mentioned migration was eaten in full and the caller reported an
+// unparseable answer about a query that had worked. A filter that has never
+// been shown FAILING has not been tested, so every case below plants the
+// historical input and asserts today's filter answers differently.
+//
+// The fixtures are the names trios#1540 requires the tree to define:
+// FRESH_CRITERION and FRESH_ID are the answer that must survive;
+// aFunction(ThatIsNowhere) is the call shape the old filter almost ate.
+
+const FRESH_CRITERION = 'the criteria the fresh answer carries'
+const FRESH_ID = 'row-the-filter-must-keep'
+const aFunction = 'aFunction'
+const ThatIsNowhere = 'ThatIsNowhere'
+
+check('every CHATTER entry names a banner line, and only from its start', () => {
+  const banners = [
+    'Using SSH into the service',
+    'warning: Config as Code is enabled',
+    '\u2192 Migrate to railway.json',
+    '  \u2192 Migrate now',
+    'Existing files keep working',
+    '  Existing files keep working fine',
+    'note that railway.json / railway.toml is what it printed',
+  ]
+  for (const b of banners) if (!SE.chatterOnly(b)) throw new Error(`a banner line was not recognised as chatter: ${b}`)
+  eq(SE.CHATTER.length, 5, 'CHATTER is the single named source of the patterns')
+})
+
+check('an answer line is never chatter, whatever words it carries', () => {
+  const answer = JSON.stringify({
+    id: FRESH_ID,
+    criterion: FRESH_CRITERION,
+    note: 'the review mentions Migrate and railway.json in passing',
+  })
+  if (!answer.startsWith('{')) throw new Error('the fixture stopped being answer-shaped; the case no longer tests the rule')
+  if (SE.chatterOnly(answer)) throw new Error('an answer-shaped line was classified as chatter')
+})
+
+check('the filter keeps the answer the old filter ate', () => {
+  const raw = [
+    'Using SSH into the service',
+    JSON.stringify({ id: FRESH_ID, criterion: FRESH_CRITERION, note: 'review note mentions Migrate in passing' }),
+  ].join('\n')
+  const kept = SE.clean(raw)
+  if (!kept.includes(FRESH_ID) || !kept.includes(FRESH_CRITERION)) {
+    throw new Error('the filter deleted the answer it was filtering - the #1422 defect')
+  }
+  if (kept.includes('Using SSH')) throw new Error('the banner was kept')
+  eq(kept.split('\n').length, 1, 'exactly the answer line must survive')
+})
+
+check('a banner line is dropped even when it carries a call, and the answer shape with the same tokens survives', () => {
+  const dropped = `Using SSH ${aFunction}(${ThatIsNowhere})`
+  const kept = `{"call":"${aFunction}","arg":"${ThatIsNowhere}"}`
+  if (!SE.chatterOnly(dropped)) throw new Error('a banner line with extra tokens stopped being chatter')
+  if (SE.chatterOnly(kept)) throw new Error('an answer line was classified as chatter')
+  eq(SE.clean([dropped, kept].join('\n')), kept, 'drop the banner, keep the answer')
+})
+
+check('a line that merely MENTIONS the banner words is not chatter', () => {
+  eq(SE.chatterOnly('The review note mentions Migrate in passing'), false, 'contains is not starts-with')
+  eq(SE.chatterOnly('a line about Existing files keep working, mid-sentence'), false, 'the anchored rule')
+})
+
+check('nstale counts the escalations that still stand', () => {
+  eq(SE.nstale([{ state: 'stands' }, { state: 'STALE' }, { state: 'unchecked' }]), 2, 'two of three still stand')
+})
+
+check('clean is built on CHATTER, not on a second private pattern', () => {
+  const src = codeOf('stale-escalations.mjs')
+  if (!src.includes('return !chatterOnly(l)')) throw new Error('clean must delegate to chatterOnly')
+  eq((src.match(/Migrate/g) || []).length, 1, 'the Migrate banner is named exactly once - in CHATTER')
 })
 
 
@@ -4381,10 +4459,10 @@ check('no dashboard row can break the box, however long its content', () => {
   const widths = new Set(lines.map((l) => [...l].length))
   if (widths.size !== 1) throw new Error(`the box has ${widths.size} different widths: ${[...widths].join(', ')}`)
   for (const l of lines) {
-    if (!/^[│├╭╰]/.test(l) || !/[│┤╮╯]$/.test(l)) throw new Error(`a row lost its border: ${l.slice(0, 90)}`)
+    if (!/^[\u2502\u251c\u256d\u2570]/.test(l) || !/[\u2502\u2524\u256e\u256f]$/.test(l)) throw new Error(`a row lost its border: ${l.slice(0, 90)}`)
   }
   // And a cut row must SAY it was cut, rather than reading as a complete thought.
-  if (!lines.some((l) => l.includes('…'))) throw new Error('content 400 characters wide was truncated silently')
+  if (!lines.some((l) => l.includes('\u2026'))) throw new Error('content 400 characters wide was truncated silently')
 })
 
 check('the dashboard reads the gateway rate, it does not probe for it', async () => {
