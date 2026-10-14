@@ -316,12 +316,39 @@ mock.module('./createAlarmFromJob', () => ({
   },
 }))
 
+let alarmGets: string[] = []
+let existingAlarms: Record<string, { name: string }> = {}
+let alarmHandlers: Array<(alarm: { name: string }) => void | Promise<void>> = []
+let startupHandlers: Array<() => void | Promise<void>> = []
+let installedHandlers: Array<() => void | Promise<void>> = []
+
 const chromeBefore = (globalThis as { chrome?: unknown }).chrome
 ;(globalThis as { chrome?: unknown }).chrome = {
   alarms: {
     clear: async (name: string) => {
       alarmClears.push(name)
       return true
+    },
+    get: async (name: string) => {
+      alarmGets.push(name)
+      return existingAlarms[name] ?? null
+    },
+    onAlarm: {
+      addListener: (fn: (alarm: { name: string }) => void | Promise<void>) => {
+        alarmHandlers.push(fn)
+      },
+    },
+  },
+  runtime: {
+    onStartup: {
+      addListener: (fn: () => void | Promise<void>) => {
+        startupHandlers.push(fn)
+      },
+    },
+    onInstalled: {
+      addListener: (fn: () => void | Promise<void>) => {
+        installedHandlers.push(fn)
+      },
     },
   },
 }
@@ -603,6 +630,357 @@ describe('syncSchedulesToBackend', () => {
     expect(sentryCalls[0].error).toBeInstanceOf(Error)
     expect(sentryCalls[0].hint).toEqual({
       extra: { jobId: 'job-1', jobName: 'Morning digest' },
+    })
+  })
+})
+
+/*
+ * The scheduledJobRuns entrypoint contract (gHashTag/trios#1567) -
+ * appended here for the same one-process reason as the sync contract
+ * above: the entrypoint imports the store, and a standalone suite in
+ * the same group would race the readdir file order again (measured
+ * across OSes in trios#1571). The block reuses this file's seams: the
+ * store items through the values map, the createAlarmFromJob
+ * recording fake, and the chrome surface above (alarms.get plus the
+ * alarm/startup/installed listener capture). The messaging seam is
+ * re-registered as a recording stand-in that still carries both
+ * exports (the file's own store instance keeps its earlier binding),
+ * so the entrypoint's onScheduleMessage handlers can be invoked.
+ * getChatServerResponse is a programmable recording fake - its real
+ * chain never materializes in this job. crypto.randomUUID and Date
+ * stay real, so run ids and timestamps are asserted by shape, not by
+ * value.
+ */
+
+type ChatCall = {
+  message: string
+  providerId: string | undefined
+  signal: AbortSignal
+}
+
+let scheduleHandlers = new Map<
+  string,
+  (message: { data: Record<string, unknown> }) => Promise<unknown>
+>()
+let chatCalls: ChatCall[] = []
+let chatBehavior: 'respond' | 'throw' | 'hang' = 'respond'
+let chatResponse: Record<string, unknown> = {}
+
+mock.module('@/lib/messaging/schedules/scheduleMessages', () => ({
+  onScheduleMessage: (
+    type: string,
+    handler: (message: { data: Record<string, unknown> }) => Promise<unknown>,
+  ) => {
+    scheduleHandlers.set(type, handler)
+    return () => scheduleHandlers.delete(type)
+  },
+  sendScheduleMessage: async () => ({}),
+}))
+
+mock.module('@/lib/schedules/getChatServerResponse', () => ({
+  getChatServerResponse: async (request: {
+    message: string
+    providerId?: string
+    signal: AbortSignal
+  }) => {
+    chatCalls.push({
+      message: request.message,
+      providerId: request.providerId,
+      signal: request.signal,
+    })
+    if (chatBehavior === 'throw') throw new Error('boom from the server')
+    if (chatBehavior === 'hang') {
+      return new Promise((_resolve, reject) => {
+        request.signal.addEventListener('abort', () => {
+          reject(new Error('aborted'))
+        })
+      })
+    }
+    return { ...chatResponse }
+  },
+}))
+
+const runsSpecifier: string =
+  '../../entrypoints/background/scheduledJobRuns.ts?zcode-real-runs'
+const { scheduledJobRuns } = (await import(
+  runsSpecifier
+)) as typeof import('../../entrypoints/background/scheduledJobRuns')
+
+type StoredRun = {
+  id: string
+  jobId: string
+  startedAt: string
+  status: string
+  completedAt?: string
+  result?: string
+  error?: string
+  finalResult?: unknown
+  executionLog?: unknown
+  toolCalls?: unknown
+}
+
+const runsJob = (overrides: Partial<ScheduledJob> = {}): ScheduledJob => ({
+  id: 'job-1',
+  name: 'Morning digest',
+  query: 'summarize the news',
+  scheduleType: 'hourly',
+  scheduleTime: '09:00',
+  scheduleInterval: 1,
+  enabled: true,
+  providerId: 'prov-1',
+  createdAt: '2026-10-01T10:00:00Z',
+  updatedAt: '2026-10-02T10:00:00Z',
+  ...overrides,
+})
+
+const storedRuns = (): StoredRun[] =>
+  (values.get('local:scheduledJobRuns') as StoredRun[]) ?? []
+
+const storedJobsList = (): ScheduledJob[] =>
+  (values.get('local:scheduledJobs') as ScheduledJob[]) ?? []
+
+const minutesAgo = (minutes: number) =>
+  new Date(Date.now() - minutes * 60 * 1000).toISOString()
+
+describe('scheduledJobRuns', () => {
+  beforeEach(() => {
+    alarmClears = []
+    alarmCreates = []
+    alarmGets = []
+    existingAlarms = {}
+    alarmHandlers = []
+    startupHandlers = []
+    installedHandlers = []
+    scheduleHandlers = new Map()
+    chatCalls = []
+    chatBehavior = 'respond'
+    chatResponse = {
+      text: 'ok text',
+      finalResult: 'final answer',
+      executionLog: ['step 1'],
+      toolCalls: [{ name: 'search' }],
+    }
+    values.delete('local:scheduledJobs')
+    values.delete('local:scheduledJobRuns')
+  })
+
+  it('registers every listener when the entrypoint runs', async () => {
+    await scheduledJobRuns()
+
+    expect(alarmHandlers.length).toBe(1)
+    expect(startupHandlers.length).toBe(1)
+    expect(installedHandlers.length).toBe(1)
+    expect([...scheduleHandlers.keys()].sort()).toEqual([
+      'cancelScheduledJobRun',
+      'runScheduledJob',
+    ])
+  })
+
+  it('ignores alarms that are not scheduled-job alarms', async () => {
+    await scheduledJobRuns()
+    await alarmHandlers[0]?.({ name: 'some-other-alarm' })
+
+    expect(chatCalls.length).toBe(0)
+    expect(storedRuns()).toEqual([])
+  })
+
+  it('executes the job behind a scheduled-job alarm and records the completed run', async () => {
+    values.set('local:scheduledJobs', [
+      runsJob({ id: 'job-1', query: 'plan my day' }),
+    ])
+    await scheduledJobRuns()
+    await alarmHandlers[0]?.({ name: 'scheduled-job-job-1' })
+
+    expect(chatCalls.length).toBe(1)
+    expect(chatCalls[0].message).toBe('plan my day')
+    expect(chatCalls[0].providerId).toBe('prov-1')
+    expect(chatCalls[0].signal).toBeInstanceOf(AbortSignal)
+
+    const runs = storedRuns()
+    expect(runs.length).toBe(1)
+    expect(runs[0].jobId).toBe('job-1')
+    expect(runs[0].status).toBe('completed')
+    expect(runs[0].result).toBe('ok text')
+    expect(runs[0].finalResult).toBe('final answer')
+    expect(runs[0].executionLog).toEqual(['step 1'])
+    expect(runs[0].toolCalls).toEqual([{ name: 'search' }])
+    expect(runs[0].completedAt).toBeDefined()
+
+    const jobs = storedJobsList()
+    expect(jobs[0].lastRunAt).toBeDefined()
+  })
+
+  it('records a failed run when the chat server errors', async () => {
+    values.set('local:scheduledJobs', [runsJob()])
+    chatBehavior = 'throw'
+    await scheduledJobRuns()
+    await alarmHandlers[0]?.({ name: 'scheduled-job-job-1' })
+
+    const runs = storedRuns()
+    expect(runs.length).toBe(1)
+    expect(runs[0].status).toBe('failed')
+    expect(runs[0].result).toBe('boom from the server')
+    expect(runs[0].error).toBe('boom from the server')
+  })
+
+  it('keeps at most fifteen runs per job and never touches other jobs runs', async () => {
+    const mine: StoredRun[] = Array.from({ length: 15 }, (_, i) => ({
+      id: `old-run-${i}`,
+      jobId: 'job-1',
+      startedAt: minutesAgo(60 + i),
+      status: 'completed',
+    }))
+    const theirs: StoredRun[] = [
+      {
+        id: 'other-run-0',
+        jobId: 'job-2',
+        startedAt: minutesAgo(90),
+        status: 'completed',
+      },
+      {
+        id: 'other-run-1',
+        jobId: 'job-2',
+        startedAt: minutesAgo(80),
+        status: 'completed',
+      },
+    ]
+    values.set('local:scheduledJobRuns', [...mine, ...theirs])
+    values.set('local:scheduledJobs', [runsJob()])
+    await scheduledJobRuns()
+    await alarmHandlers[0]?.({ name: 'scheduled-job-job-1' })
+
+    const runs = storedRuns()
+    const mineAfter = runs.filter((r) => r.jobId === 'job-1')
+    const theirsAfter = runs.filter((r) => r.jobId === 'job-2')
+    expect(mineAfter.length).toBe(15)
+    expect(mineAfter.filter((r) => !r.id.startsWith('old-run-')).length).toBe(1)
+    expect(mineAfter.filter((r) => r.id.startsWith('old-run-')).length).toBe(14)
+    expect(theirsAfter.map((r) => r.id)).toEqual(['other-run-0', 'other-run-1'])
+  })
+
+  it('marks stale running runs as timed out on startup and keeps fresh ones', async () => {
+    values.set('local:scheduledJobRuns', [
+      {
+        id: 'stale-run',
+        jobId: 'job-1',
+        startedAt: minutesAgo(11),
+        status: 'running',
+      },
+      {
+        id: 'fresh-run',
+        jobId: 'job-1',
+        startedAt: minutesAgo(5),
+        status: 'running',
+      },
+      {
+        id: 'done-run',
+        jobId: 'job-1',
+        startedAt: minutesAgo(30),
+        status: 'completed',
+      },
+    ])
+    await scheduledJobRuns()
+    await startupHandlers[0]?.()
+
+    const byId = new Map(storedRuns().map((r) => [r.id, r]))
+    expect(byId.get('stale-run')?.status).toBe('failed')
+    expect(byId.get('stale-run')?.result).toBe('Job timed out!')
+    expect(byId.get('stale-run')?.completedAt).toBeDefined()
+    expect(byId.get('fresh-run')?.status).toBe('running')
+    expect(byId.get('done-run')?.status).toBe('completed')
+  })
+
+  it('rewires alarms for enabled jobs without one on startup', async () => {
+    values.set('local:scheduledJobs', [
+      runsJob({ id: 'job-1' }),
+      runsJob({ id: 'job-2', enabled: false }),
+    ])
+    values.set('local:scheduledJobRuns', [
+      {
+        id: 'recent',
+        jobId: 'job-1',
+        startedAt: minutesAgo(30),
+        status: 'completed',
+      },
+    ])
+    await scheduledJobRuns()
+    await startupHandlers[0]?.()
+
+    expect(alarmGets).toEqual(['scheduled-job-job-1'])
+    expect(alarmCreates.length).toBe(1)
+    expect((alarmCreates[0] as { id?: string }).id).toBe('job-1')
+    expect(chatCalls.length).toBe(0)
+  })
+
+  it('runs the missed hourly job whose interval has elapsed', async () => {
+    values.set('local:scheduledJobs', [runsJob({ createdAt: minutesAgo(125) })])
+    await scheduledJobRuns()
+    await startupHandlers[0]?.()
+
+    expect(chatCalls.length).toBe(1)
+    expect(storedRuns().length).toBe(1)
+    expect(storedRuns()[0].status).toBe('completed')
+  })
+
+  it('skips the missed hourly job younger than one interval', async () => {
+    values.set('local:scheduledJobs', [runsJob({ createdAt: minutesAgo(30) })])
+    await scheduledJobRuns()
+    await startupHandlers[0]?.()
+
+    expect(chatCalls.length).toBe(0)
+    expect(storedRuns()).toEqual([])
+  })
+
+  it('skips the missed job that already ran within the last twenty-four hours', async () => {
+    values.set('local:scheduledJobs', [runsJob({ createdAt: minutesAgo(125) })])
+    values.set('local:scheduledJobRuns', [
+      {
+        id: 'recent-done',
+        jobId: 'job-1',
+        startedAt: minutesAgo(30),
+        status: 'completed',
+      },
+    ])
+    await scheduledJobRuns()
+    await startupHandlers[0]?.()
+
+    expect(chatCalls.length).toBe(0)
+  })
+
+  it('cancels an in-flight run by run id and reports unknown ids', async () => {
+    values.set('local:scheduledJobs', [runsJob()])
+    chatBehavior = 'hang'
+    await scheduledJobRuns()
+
+    const running = scheduleHandlers.get('runScheduledJob')
+    const started = running?.({ data: { jobId: 'job-1' } })
+    let runId: string | undefined
+    for (let i = 0; i < 100 && !runId; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      runId = storedRuns().find((r) => r.status === 'running')?.id
+    }
+    expect(runId).toBeDefined()
+
+    const cancel = scheduleHandlers.get('cancelScheduledJobRun')
+    const cancelled = await cancel?.({ data: { runId } })
+    expect(cancelled).toEqual({ success: true })
+    expect(await started).toEqual({ success: true })
+
+    const failed = storedRuns().find((r) => r.id === runId)
+    expect(failed?.status).toBe('failed')
+    expect(failed?.result).toBe('Cancelled by user')
+    expect(failed?.error).toBe('Cancelled by user')
+
+    const unknown = await cancel?.({ data: { runId: 'no-such-run' } })
+    expect(unknown).toEqual({
+      success: false,
+      error: 'Run not found or already completed',
+    })
+
+    const missingJob = await running?.({ data: { jobId: 'no-such-job' } })
+    expect(missingJob).toEqual({
+      success: false,
+      error: 'Job not found: no-such-job',
     })
   })
 })
