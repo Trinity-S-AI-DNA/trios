@@ -281,3 +281,97 @@ describe('agentConversationArtifactCardTsxContract', () => {
     expect(m).toContain('Show 2 more')
   })
 })
+
+// ---------------------------------------------------------------------------
+// The file card strip (gHashTag/trios#1673), appended to this file by the
+// readdir rule: the strip renders this suite's subject inside its graph
+// (the FilePreviewSheet), and its import of the real sheet pulls the
+// react-query machinery, which needs a provider a static render has -
+// exactly the environment this suite already builds (the sheet kit stub,
+// the agent-files mock carrying the real value exports, the graphql seam).
+// The block runs after the sheet contract above, so every seam is in
+// place; the strip binds the real sheet through the stubbed kit, which is
+// how it answers a static render here.
+
+const { FileCardStrip } = (await import(
+  './agent-conversation.file-card-strip'
+)) as typeof import('./agent-conversation.file-card-strip')
+
+const stripFiles = (count: number) =>
+  Array.from({ length: count }, (_, i) => ({
+    id: `f-${i}`,
+    path: `/out/file-${i}.txt`,
+    size: 10 + i,
+  }))
+
+const stripMarkup = (
+  files: Array<{ id: string; path: string; size: number }>,
+  over: Record<string, unknown> = {},
+) =>
+  renderToStaticMarkup(
+    createElement(
+      FileCardStrip as never,
+      {
+        turnId: 't-1',
+        files,
+        onOpenRail: () => {},
+        ...over,
+      } as never,
+    ),
+  )
+
+describe('agentConversationFileCardStripTsxContract', () => {
+  it('answers nothing for an empty file list', () => {
+    expect(stripMarkup([])).toBe('')
+  })
+
+  it('answers the header with the singular and plural produced labels and the View affordance', () => {
+    const one = stripMarkup([{ id: 'a', path: '/out/b.png', size: 2048 }])
+    expect(one).toContain('File produced')
+    expect(one).not.toContain('Files produced')
+    expect(one).toContain('View')
+    expect(one).toContain('lucide-chevron-right')
+
+    const three = stripMarkup([
+      { id: 'a', path: '/out/a.txt', size: 1 },
+      { id: 'b', path: '/out/b.txt', size: 2 },
+      { id: 'c', path: '/out/c.txt', size: 3 },
+    ])
+    expect(three).toContain('Files produced (3)')
+  })
+
+  it('answers the cards sorted by path with basename, the real size format and the kind icon', () => {
+    const m = stripMarkup([
+      { id: 'z', path: '/out/zebra.png', size: 2048 },
+      { id: 'a', path: '/out/alpha.txt', size: 12 },
+    ])
+    const alpha = m.indexOf('alpha.txt')
+    const zebra = m.indexOf('zebra.png')
+    if (alpha < 0 || zebra < 0) throw new Error('a basename went missing')
+    if (alpha > zebra) throw new Error('the cards are not sorted by path')
+    expect(m).toContain('2.0 KB')
+    expect(m).toContain('12 B')
+    expect(m).toContain('lucide-image')
+    expect(m).toContain('lucide-file-text')
+    expect(m).toContain('title="/out/zebra.png"')
+  })
+
+  it('answers four cards inline and the +N overflow control for the rest', () => {
+    const m = stripMarkup(stripFiles(6))
+    for (const seen of ['file-0', 'file-1', 'file-2', 'file-3']) {
+      expect(m).toContain(seen)
+    }
+    expect(m).not.toContain('file-4')
+    expect(m).not.toContain('file-5')
+    expect(m).toContain('+2')
+    expect(m).toContain('See 2 more in the Outputs rail')
+  })
+
+  it('answers the caller class on the strip frame', () => {
+    const m = stripMarkup([{ id: 'a', path: '/x/a.txt', size: 1 }], {
+      className: 'mt-4',
+    })
+    expect(m).toContain('mt-4')
+    expect(m).toContain('rounded-xl border border-border/60 bg-card/50')
+  })
+})
