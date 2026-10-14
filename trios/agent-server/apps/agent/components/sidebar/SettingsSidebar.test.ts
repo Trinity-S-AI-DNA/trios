@@ -13,10 +13,11 @@
  * capabilities seam answering full support every section and item
  * shows: the suite stubs that hook (supports always true - the
  * filtering the real hook drives is the capabilities module's own
- * contract) and the router's NavLink (the real one needs a live
- * router context a static render cannot provide; it answers a
- * plain anchor through a spread-real read keeping every other
- * export). The theme toggle stays real. Measured, the first mount
+ * contract), and the render sits inside a real MemoryRouter so the
+ * router's own NavLink works untouched - the sibling navigation
+ * suite of this directory counts the active classes the real
+ * NavLink applies, and replacing the router for this file would
+ * starve it. The theme toggle stays real. Measured, the first mount
  * answers the back link, the settings heading, both provider
  * sections with all their items, and the help section with its
  * three entries - the docs one as an external link.
@@ -34,15 +35,7 @@
 import { describe, expect, it, mock } from 'bun:test'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-
-const realRouterUrl = 'react-router?settings-sidebar-real'
-const realRouter = (await import(realRouterUrl)) as Record<string, unknown>
-
-mock.module('react-router', () => ({
-  ...realRouter,
-  NavLink: ({ to, children }: { to: string; children?: React.ReactNode }) =>
-    createElement('a', { href: to }, children),
-}))
+import { MemoryRouter } from 'react-router'
 
 mock.module('@/lib/browseros/useCapabilities', () => ({
   useCapabilities: () => ({ supports: () => true }),
@@ -90,7 +83,13 @@ const { SettingsSidebar } = (await import(
 describe('SettingsSidebarTsxContract', () => {
   describe('SettingsSidebar', () => {
     it('answers the first mount with the back link, the settings heading, both nav sections with all their items, and the help section with its three entries', () => {
-      const markup = renderToStaticMarkup(createElement(SettingsSidebar))
+      const markup = renderToStaticMarkup(
+        createElement(
+          MemoryRouter,
+          { initialEntries: ['/settings/ai'] },
+          createElement(SettingsSidebar),
+        ),
+      )
       expect(markup).toContain('Back')
       expect(markup).toContain('Settings')
       expect(markup).toContain('Provider Settings')
