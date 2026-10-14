@@ -74,11 +74,22 @@ mock.module('@wxt-dev/storage', () => ({
 
 let sessionFixture: { user?: { id: string } } | null = null
 
+// This suite links before every other registrar of the session seam
+// in the group's run order, and bun freezes a mock facade's export
+// set at its first link: the stand-in must carry every named export
+// any subject of the group imports (the #1504 rule). useSessionInfo
+// joins here so later suites' subjects that import the hook link
+// against a complete set.
 mock.module('@/lib/auth/sessionStorage', () => ({
   sessionStorage: {
     getValue: async () => sessionFixture,
     watch: () => () => {},
   },
+  useSessionInfo: () => ({
+    sessionInfo: sessionFixture ?? {},
+    isLoading: sessionFixture !== null,
+    updateSessionInfo: async () => {},
+  }),
 }))
 
 // The messaging module refuses to load outside a browser extension
