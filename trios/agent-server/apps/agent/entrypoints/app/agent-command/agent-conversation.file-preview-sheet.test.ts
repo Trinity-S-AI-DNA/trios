@@ -198,3 +198,86 @@ describe('agentConversationFilePreviewSheetTsxContract', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// The deprecated artifact card (gHashTag/trios#1664), appended to this file
+// by the readdir rule: the card renders this suite's subject inside its
+// graph, and a standalone card suite in the same group would race the file
+// order (measured across OSes in trios#1571). This block runs after the
+// sheet contract above, so the sheet kit stub and the agent-files mock with
+// real value exports are already in place; the card binds the real
+// FilePreviewSheet through the stubbed sheet kit, which is exactly how it
+// answers a static render here. The card's own contract: sorted rows, the
+// four-row inline cap with the show-more button, the singular and plural
+// produced labels, the per-row basename, size (the real formatter) and the
+// image/text icon dispatch. Not pinned: the expand click and the preview
+// opening - state changes need a live DOM, and the sheet contract above
+// already pins what opens.
+
+const { ArtifactCard } = (await import(
+  './agent-conversation.artifact-card'
+)) as typeof import('./agent-conversation.artifact-card')
+
+const cardMarkup = (files: Array<{ id: string; path: string; size: number }>) =>
+  renderToStaticMarkup(
+    createElement(ArtifactCard, {
+      files: files.map((file) => ({ ...file })),
+    }),
+  )
+
+describe('agentConversationArtifactCardTsxContract', () => {
+  it('answers nothing for an empty file list', () => {
+    expect(cardMarkup([])).toBe('')
+  })
+
+  it('answers the produced label in singular and plural with the paperclip', () => {
+    expect(cardMarkup([{ id: 'a', path: '/out/a.txt', size: 12 }])).toContain(
+      '1 file produced',
+    )
+    expect(
+      cardMarkup([
+        { id: 'a', path: '/out/a.txt', size: 12 },
+        { id: 'b', path: '/out/b.png', size: 2048 },
+        { id: 'c', path: '/out/c.md', size: 30 },
+      ]),
+    ).toContain('3 files produced')
+    expect(cardMarkup([{ id: 'a', path: '/out/a.txt', size: 12 }])).toContain(
+      'lucide-paperclip',
+    )
+  })
+
+  it('answers the rows sorted by path, each with its basename, the real size format and the kind icon', () => {
+    const m = cardMarkup([
+      { id: 'z', path: '/out/zebra.png', size: 2048 },
+      { id: 'a', path: '/out/alpha.txt', size: 12 },
+      { id: 'm', path: '/out/mid.md', size: 0 },
+    ])
+    const alpha = m.indexOf('alpha.txt')
+    const mid = m.indexOf('mid.md')
+    const zebra = m.indexOf('zebra.png')
+    if (alpha < 0 || mid < 0 || zebra < 0)
+      throw new Error('a basename went missing')
+    if (!(alpha < mid && mid < zebra))
+      throw new Error('rows are not sorted by path')
+    expect(m).toContain('2.0 KB')
+    expect(m).toContain('12 B')
+    expect(m).toContain('0 B')
+    expect(m).toContain('lucide-image')
+    expect(m).toContain('lucide-file-text')
+  })
+
+  it('answers four rows inline and the show-more button for the rest', () => {
+    const files = Array.from({ length: 6 }, (_, i) => ({
+      id: `f-${i}`,
+      path: `/out/file-${i}.txt`,
+      size: 10 + i,
+    }))
+    const m = cardMarkup(files)
+    for (const seen of ['file-0', 'file-1', 'file-2', 'file-3']) {
+      expect(m).toContain(seen)
+    }
+    expect(m).not.toContain('file-4')
+    expect(m).not.toContain('file-5')
+    expect(m).toContain('Show 2 more')
+  })
+})
