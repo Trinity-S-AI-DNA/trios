@@ -17,16 +17,36 @@
  * server bootstrap, the save/toggle/delete handlers, and the toast -
  * effects and event handlers do not run in a static render.
  *
- * The seams: the virtual `#imports` module (WXT's bundler alias, which
- * bun does not resolve) is stubbed with the storage item factory the
- * repository's other store shims use; the agent-server URL hook answers
- * the same null base the NewProviderDialog and file-preview-sheet
- * suites stub it with (isLoading false is falsy the same way their
- * absent field is).
+ * The seams, each registered before this suite imports anything, so the
+ * file order of the group cannot change what the subject binds:
+ * - the virtual `#imports` module (WXT's bundler alias, which bun does
+ *   not resolve) is stubbed with the storage item factory the
+ *   repository's other store shims use;
+ * - the agent-server URL hook answers the same null base the
+ *   NewProviderDialog and file-preview-sheet suites stub it with
+ *   (isLoading false is falsy the same way their absent field is);
+ * - the dialog kit, because the group's other suites register their own
+ *   stand-ins whose closed root swallows the trigger's subtree with it
+ *   (open ? children : null), and in the CI readdir order this page
+ *   bound one of those and both Add buttons vanished - measured in the
+ *   first push of this PR. This suite's own stand-in keeps the trigger
+ *   visible (the root and trigger pass children through) and the
+ *   content empty (a static render never opens a controlled dialog).
  */
 import { describe, expect, it, mock } from 'bun:test'
-import { createElement } from 'react'
+import {
+  Children,
+  createElement,
+  type FC,
+  isValidElement,
+  type ReactNode,
+} from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+
+const passChildren =
+  (): FC<{ children?: ReactNode }> =>
+  ({ children }) =>
+    createElement('div', null, children)
 
 const values = new Map<string, unknown>()
 
@@ -51,6 +71,47 @@ mock.module('#imports', () => ({
 mock.module('@/lib/browseros/useBrowserOSProviders', () => ({
   useAgentServerUrl: () => ({ baseUrl: null, isLoading: false }),
 }))
+
+mock.module('@/components/ui/dialog', () => {
+  const pass = passChildren()
+  const Trigger = pass
+  const Portal = pass
+  const Overlay = () => null
+  // The root keeps the trigger's subtree alive while the dialog is
+  // closed - the group's other stand-ins answer open ? children : null,
+  // which swallows the page's Add buttons with it - and hides
+  // everything else, so a closed dialog without a trigger still
+  // answers nothing for every consumer of this registration.
+  const Root = ({
+    open,
+    children,
+  }: {
+    open?: boolean
+    children?: ReactNode
+  }) => {
+    const keep = Children.toArray(children ?? []).filter(
+      (child) =>
+        isValidElement(child) &&
+        (open === true ||
+          child.type === Trigger ||
+          child.type === Portal ||
+          child.type === Overlay),
+    )
+    return keep.length ? createElement('div', null, keep) : null
+  }
+  return {
+    Dialog: Root,
+    DialogClose: pass,
+    DialogContent: () => null,
+    DialogDescription: pass,
+    DialogFooter: pass,
+    DialogHeader: pass,
+    DialogOverlay: Overlay,
+    DialogPortal: Portal,
+    DialogTitle: pass,
+    DialogTrigger: Trigger,
+  }
+})
 
 const { AclSettingsPage } = await import('./AclSettingsPage')
 
