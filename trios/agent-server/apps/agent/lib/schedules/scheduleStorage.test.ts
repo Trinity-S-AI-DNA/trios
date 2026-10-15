@@ -1232,12 +1232,18 @@ describe('scheduleResultsContract', () => {
 // suite's subject (the store, through useScheduledJobRuns), whose module
 // this file already materialized real behind its own stand-ins - a
 // standalone suite in the subject's group would link the store fresh and
-// trip the generated-graphql document the local run does not carry. The
-// real hook answers an empty run list in a static render - it populates
-// through effects a static render never runs - so the run history stays
-// away and what is pinned is the card frame the static mount answers,
-// plus the run-history rows, their gating and the switch label as source
-// checks, the pattern the blocks above use.
+// trip the generated-graphql document the local run does not carry.
+//
+// The card is held as a FULL SOURCE CONTRACT, no render: its graph also
+// reaches the llm-providers store, whose own suite (lib/llm-providers/
+// storage.test.ts) pins the defineItem interception of ITS OWN storage
+// seam, recorded at that module's first materialization - and bun links
+// and runs test files one by one, so whichever order the two files meet
+// in, a card import from here materializes the providers store first (or
+// replaces it) and poisons that suite's pins. Measured both directions
+// on the first run of this block; the card's own observable answer is
+// effect-gated either way (the run list arrives through effects a static
+// render never runs), so the source checks below are the contract.
 
 const taskCardCode = () =>
   fs
@@ -1252,89 +1258,68 @@ const taskCardCode = () =>
     .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
     .join('\n')
 
-const { ScheduledTaskCard } = (await import(
-  '../../entrypoints/app/scheduled-tasks/ScheduledTaskCard'
-)) as typeof import('../../entrypoints/app/scheduled-tasks/ScheduledTaskCard')
-
-const taskCardHandlers = {
-  onEdit: () => {},
-  onDelete: () => {},
-  onToggle: () => {},
-  onRun: () => {},
-  onViewRun: () => {},
-  onCancelRun: () => {},
-  onRetryRun: () => {},
-}
-
-const taskCardMarkup = (over: Partial<ScheduledJob>) =>
-  renderToStaticMarkup(
-    createElement(ScheduledTaskCard, {
-      job: {
-        id: 'job-1',
-        name: 'Morning brief',
-        query: 'Morning news digest',
-        scheduleType: 'daily',
-        scheduleTime: '09:00',
-        enabled: true,
-        createdAt: '2026-01-01T00:00:00Z',
-        updatedAt: '2026-01-01T00:00:00Z',
-        ...over,
-      },
-      ...taskCardHandlers,
-    }),
-  )
-
 describe('scheduledTaskCardContract', () => {
-  it('answers the enabled daily card: the switch on with its Disable label, the name and quoted query, the daily schedule line, the Test and Edit buttons and the delete behind its label, and keeps the Disabled badge, the provider bullet and the run history away', () => {
-    const card = taskCardMarkup({})
-    expect(card).toContain('role="switch"')
-    expect(card).toContain('aria-checked="true"')
-    expect(card).toContain('aria-label="Disable Morning brief"')
-    expect(card).toContain('Morning brief')
-    expect(card).toContain('Morning news digest')
-    expect(card).toContain('Daily at 09:00')
-    expect(card).toContain('>Test<')
-    expect(card).toContain('>Edit<')
-    expect(card).toContain('aria-label="Delete Morning brief"')
-    expect(card).toContain('lucide-play')
-    expect(card).toContain('lucide-pencil')
-    expect(card).toContain('lucide-trash-2')
-    expect(card).not.toContain('>Disabled<')
-    expect(card).not.toContain('•')
-    expect(card).not.toContain('Run History')
-  })
-
-  it('answers the disabled hourly card: the switch off with its Enable label, the Disabled badge, the every-two-hours schedule line and the last-run line in relative words', () => {
-    const card = taskCardMarkup({
-      name: 'Night brief',
-      enabled: false,
-      scheduleType: 'hourly',
-      scheduleTime: undefined,
-      scheduleInterval: 2,
-      lastRunAt: '2020-01-01T00:00:00Z',
-    })
-    expect(card).toContain('aria-checked="false"')
-    expect(card).toContain('aria-label="Enable Night brief"')
-    expect(card).toContain('>Disabled<')
-    expect(card).toContain('Every 2 hours')
-    expect(card).toContain('Last run:')
-    expect(card).toContain('years ago')
-  })
-
-  it('answers the schedule fallbacks: the single-minute interval and the unset time', () => {
-    expect(
-      taskCardMarkup({
-        scheduleType: 'minutes',
-        scheduleTime: undefined,
-        scheduleInterval: 1,
-      }),
-    ).toContain('Every minute')
-    expect(taskCardMarkup({ scheduleTime: undefined })).toContain(
-      'Not scheduled',
+  it('carries the switch on the enabled flag with its Disable/Enable label, the name and quoted query, and the Disabled badge gated on the disabled flag', () => {
+    const src = taskCardCode()
+    if (!/checked=\{job\.enabled\}/.test(src))
+      throw new Error('the switch must ride the enabled flag')
+    if (!/onCheckedChange=\{onToggle\}/.test(src))
+      throw new Error('the switch must keep its toggle handler')
+    if (
+      !/aria-label=\{`\$\{job\.enabled \? 'Disable' : 'Enable'\} \$\{job\.name\}`\}/.test(
+        src,
+      )
     )
+      throw new Error('the switch label must keep its enabled-branch naming')
+    if (!/font-semibold">\{job\.name\}<\/span>/.test(src))
+      throw new Error('the card must carry the job name')
+    if (!/"\{job\.query\}"/.test(src))
+      throw new Error('the card must carry the quoted query')
+    if (!/\{!job\.enabled && \(/.test(src))
+      throw new Error('the Disabled badge must be gated on the disabled flag')
+    if (!/\n\s+Disabled\n/.test(src))
+      throw new Error('the Disabled badge must keep its label')
   })
 
-  it('gates the run history rows on the measured statuses behind their icons and labels, keeps the View row action and the switch label on the enabled flag', () => {
+  it('gates the provider and last-run rows on their loaded values, and carries the Test and Edit buttons with the delete behind its label', () => {
+    const src = taskCardCode()
+    if (!/\{providerInfo && \(/.test(src))
+      throw new Error('the provider row must stay gated on the loaded info')
+    if (!/\{job\.lastRunAt && \(/.test(src))
+      throw new Error('the last-run row must stay gated on the timestamp')
+    if (!/Last run: \{formatRelativeTime\(job\.lastRunAt\)\}/.test(src))
+      throw new Error('the last-run row must keep its relative line')
+    if (!/aria-label=\{`Delete \$\{job\.name\}`\}/.test(src))
+      throw new Error('the delete control must keep its name label')
+    if (!/onClick=\{onRun\}/.test(src) || !/onClick=\{onEdit\}/.test(src))
+      throw new Error('the Test and Edit buttons must keep their handlers')
+    if (!/\n\s+Test\n/.test(src) || !/\n\s+Edit\n/.test(src))
+      throw new Error('the Test and Edit buttons must keep their labels')
+    if (!/<Play /.test(src) || !/<Pencil /.test(src) || !/<Trash2 /.test(src))
+      throw new Error('the Test, Edit and delete buttons must keep their icons')
+  })
+
+  it('answers the schedule lines through the measured set with the singular branches, and the durations through the running note and the minute-second split', () => {
+    const src = taskCardCode()
+    if (!/`Daily at \$\{job\.scheduleTime\}`/.test(src))
+      throw new Error('the daily schedule must keep its time line')
+    if (!/'Every hour'/.test(src))
+      throw new Error('the single-hour interval must keep its line')
+    if (!/`Every \$\{job\.scheduleInterval\} hours`/.test(src))
+      throw new Error('the hourly interval must keep its line')
+    if (!/'Every minute'/.test(src))
+      throw new Error('the single-minute interval must keep its line')
+    if (!/`Every \$\{job\.scheduleInterval\} minutes`/.test(src))
+      throw new Error('the minute interval must keep its line')
+    if (!/'Not scheduled'/.test(src))
+      throw new Error('the unset schedule must keep its fallback line')
+    if (!/if \(!completedAt\) return 'Running\.\.\.'/.test(src))
+      throw new Error('the open run must keep its running note')
+    if (!/`\$\{mins\}m \$\{secs\}s`/.test(src))
+      throw new Error('the long durations must keep their minute-second split')
+  })
+
+  it('gates the run history rows on the measured statuses behind their icons and labels, keeps the View row action and the counted title', () => {
     const src = taskCardCode()
     if (!/Run History \(\{runs\.length\}\)/.test(src))
       throw new Error('the run history must keep its counted title')
@@ -1354,13 +1339,5 @@ describe('scheduledTaskCardContract', () => {
       throw new Error('the retry control must keep its aria-label')
     if (!/\n\s+View\n/.test(src))
       throw new Error('every run row must keep its View action')
-    if (!/aria-label=\{`Delete \$\{job\.name\}`\}/.test(src))
-      throw new Error('the delete control must keep its name label')
-    if (
-      !/aria-label=\{`\$\{job\.enabled \? 'Disable' : 'Enable'\} \$\{job\.name\}`\}/.test(
-        src,
-      )
-    )
-      throw new Error('the switch label must keep its enabled-branch naming')
   })
 })
