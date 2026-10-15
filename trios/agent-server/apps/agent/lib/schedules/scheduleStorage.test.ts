@@ -1096,3 +1096,132 @@ describe('scheduledTaskResultsContract', () => {
     }
   })
 })
+
+// ---------------------------------------------------------------------------
+// The newtab scheduled results panel (gHashTag/trios#1580), appended to
+// this file by the same readdir rule as the block above: its subject
+// imports this suite's subject (the store, through useScheduledJobRuns
+// and useScheduledJobs), and the two hooks answer empty arrays in a
+// static render - they populate through effects a static render never
+// runs - while a store mock registered anywhere cannot replace the
+// module this file already materialized real (measured in trios#1634).
+// So what is pinned is what is statically reachable - the panel stays
+// entirely away while no run has loaded - plus the list's ordering,
+// cap, gating, header and dialog wiring as source checks, the pattern
+// the block above uses for behavior no static render can reach.
+//
+// The subject reads the collapsed flag from localStorage inside its
+// first useState initializer, and this group has no localStorage at
+// all (measured: the bun-test globals leave it undefined) - so the
+// render helper below lends the panel a not-collapsed flag for the
+// duration of one render and takes it back.
+
+const resultsPanelCode = () =>
+  fs
+    .readFileSync(
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../entrypoints/newtab/index/ScheduleResults.tsx',
+      ),
+      'utf8',
+    )
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n')
+
+const { ScheduleResults } = (await import(
+  '../../entrypoints/newtab/index/ScheduleResults'
+)) as typeof import('../../entrypoints/newtab/index/ScheduleResults')
+
+const scheduleResultsMarkup = () => {
+  const had = 'localStorage' in globalThis
+  const previous = Reflect.get(globalThis, 'localStorage')
+  Reflect.set(globalThis, 'localStorage', {
+    getItem: () => null,
+    setItem: () => {},
+  })
+  try {
+    return renderToStaticMarkup(createElement(ScheduleResults))
+  } finally {
+    if (had) Reflect.set(globalThis, 'localStorage', previous)
+    else Reflect.deleteProperty(globalThis, 'localStorage')
+  }
+}
+
+describe('scheduleResultsContract', () => {
+  it('stays entirely away while the store has loaded no run', () => {
+    expect(scheduleResultsMarkup()).toBe('')
+  })
+
+  it('orders the list with the running runs before the finished ones, newest first, and caps the display at three', () => {
+    const src = resultsPanelCode()
+    const concat = src.match(
+      /return \[\.\.\.runningJobs, \.\.\.completedOrFailed\]/,
+    )
+    if (!concat)
+      throw new Error(
+        'the running runs must be concatenated before the finished ones',
+      )
+    if (
+      !/new Date\(b\.startedAt\)\.getTime\(\) - new Date\(a\.startedAt\)\.getTime\(\)/.test(
+        src,
+      )
+    ) {
+      throw new Error('the finished runs must be sorted newest first')
+    }
+    if (!/if \(runningJobs\.length >= MAX_DISPLAY_COUNT\) \{/.test(src)) {
+      throw new Error('a full running set must stand alone')
+    }
+    if (!/const MAX_DISPLAY_COUNT = 3/.test(src)) {
+      throw new Error('the display cap must stay three')
+    }
+  })
+
+  it('gates the cancel control on the running status and the retry control on the failed one, each behind its aria-label', () => {
+    const src = resultsPanelCode()
+    if (!/\{run\.status === 'running' && \(/.test(src))
+      throw new Error('the cancel control must be gated on the running status')
+    if (!/\{run\.status === 'failed' && \(/.test(src))
+      throw new Error('the retry control must be gated on the failed status')
+    if (!/aria-label="Cancel run"/.test(src))
+      throw new Error('the cancel control must keep its aria-label')
+    if (!/aria-label="Retry run"/.test(src))
+      throw new Error('the retry control must keep its aria-label')
+  })
+
+  it('dispatches the status icons through the measured set', () => {
+    const src = resultsPanelCode()
+    for (const [status, icon] of [
+      ['completed', 'CheckCircle2'],
+      ['running', 'Loader2'],
+      ['failed', 'XCircle'],
+    ]) {
+      const re = new RegExp(`case '${status}':\\s*\\n\\s*return <${icon} `)
+      if (!re.test(src)) throw new Error(`the ${status} icon must stay ${icon}`)
+    }
+  })
+
+  it('carries the header title, the running badge and the view-more anchor, opens by default, and wires the run result dialog', () => {
+    const src = resultsPanelCode()
+    if (!/Scheduled Task Outputs/.test(src))
+      throw new Error('the header must keep its title')
+    if (!/\{runningCount\} running/.test(src))
+      throw new Error('the running badge must keep its count')
+    if (!/href="\/app\.html#\/scheduled"/.test(src))
+      throw new Error('the view-more anchor must keep its destination')
+    if (!/View more/.test(src))
+      throw new Error('the view-more anchor must keep its label')
+    if (
+      !/SCHEDULE_RESULTS_COLLAPSED_KEY = 'schedule-results-collapsed'/.test(src)
+    )
+      throw new Error('the collapsed flag must keep its key')
+    if (!/stored !== 'true'/.test(src))
+      throw new Error('the panel must open when the flag is unset')
+    if (!/run=\{viewingRun\}/.test(src))
+      throw new Error('the dialog must take the viewed run')
+    if (!/onCancelRun=\{handleCancelRun\}/.test(src))
+      throw new Error('the dialog must take the cancel handler')
+    if (!/onRetryRun=\{handleRetryRun\}/.test(src))
+      throw new Error('the dialog must take the retry handler')
+  })
+})
