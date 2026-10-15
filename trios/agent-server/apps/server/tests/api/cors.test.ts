@@ -161,10 +161,7 @@ describe('every public Queen projection is mounted with public-read CORS', () =>
   const corsModuleDir = dirname(
     fileURLToPath(import.meta.resolve('../../src/api/utils/cors')),
   )
-  const source = readFileSync(
-    resolve(corsModuleDir, '..', 'server.ts'),
-    'utf8',
-  )
+  const source = readFileSync(resolve(corsModuleDir, '..', 'server.ts'), 'utf8')
   const mounted = [
     ...source.matchAll(/\.route\('(\/queen\/(?:status|public-[a-z-]+))'/g),
   ].map((m) => m[1])

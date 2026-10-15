@@ -66,6 +66,13 @@ import { offerToRunner } from './queen-runner-work'
 import { RUNNER_KEY_BASE } from './queen-runners'
 import { workerSystemPrompt } from './queen-tick'
 import { stepMayStart, stepSignal } from './queen-turn-stop'
+import {
+  reapVerdict,
+  ST_NO,
+  ST_UNKNOWN,
+  ST_YES,
+  WT_KEEP,
+} from './queen-worktree-keep'
 
 /**
  * #1360. Every value the `outcome` column of `queen_dispatch` may carry,
@@ -3269,69 +3276,31 @@ export async function reapWorktrees(
     const now = measure(root)
     if (now !== null && now <= low) break
 
-    if (opts.protect?.has(c.path.slice(c.path.lastIndexOf('/') + 1))) {
+    // THE CARD DECIDES (specs/queen/worktree_keep.t27 reap_verdict): this code
+    // reads facts and asks. A tree is released only when no bee runs in it, it
+    // is clean with IGNORED files counted, nothing on it is unpublished and
+    // every read worked. Anything unknown keeps it; when every tree is kept the
+    // loop ends with the volume still full and the disk guard refuses new bees
+    // until space returns, rather than deleting what somebody may need.
+    const running = opts.protect?.has(c.path.slice(c.path.lastIndexOf('/') + 1))
+      ? ST_YES
+      : ST_NO
+    if (reapVerdict(running, ST_NO, ST_NO, ST_YES) === WT_KEEP) {
       result.keptRunning.push(c.path)
       continue
     }
-    const dirty = await run('git', ['status', '--porcelain'], c.path, 60_000)
-    // Unreadable is not clean. A tree whose state cannot be read might hold the
-    // only copy of a turn's work.
-    if (dirty.code !== 0 || dirty.out.trim().length > 0) {
+    if (
+      reapVerdict(ST_NO, await dirtyFactOf(c.path), ST_NO, ST_YES) === WT_KEEP
+    ) {
       result.keptDirty.push(c.path)
       continue
     }
-    // NOR A TREE WHOSE BRANCH CARRIES COMMITS NOBODY ELSE HAS.
-    //
-    // The container holds no push credential by design, so a commit on a bee
-    // branch lives in exactly one place: this volume. Until the salvage, "the
-    // only copy" and "uncommitted" were the same set and the dirt check above
-    // covered both. The salvage breaks that: it COMMITS the work and leaves
-    // the tree clean, which made the tree eligible for removal here - and the
-    // next `prepareWorktree` re-cuts with `worktree add -B queen-<issue>
-    // <base>`, which RESETS the branch to base and takes the salvage with it.
-    // The work this exists to preserve would be destroyed by the preserving,
-    // and the row would still advertise a salvaged_sha no ref reaches.
-    //
-    // Unreadable is not merged, for the same reason unreadable is not clean.
-    const ahead = await run(
-      'git',
-      ['rev-list', '--count', `${baseRef()}..HEAD`],
-      c.path,
-      60_000,
-    )
-    if (ahead.code !== 0 || Number(ahead.out.trim() || '1') > 0) {
-      // UNLESS THE REMOTE ALREADY HAS IT, byte for byte.
-      //
-      // "The only copy" is the whole of the argument above, and it stops being
-      // true the moment the branch is on origin at the same commit. Measured
-      // 2026-09-20: the container had twenty-one worktrees at boot, every one
-      // of them kept by this branch of the check, and the volume filled until
-      // the process was killed - then the entrypoint cleared them, the swarm
-      // ran for a few minutes, and it happened again. Six such restarts in one
-      // afternoon, at four lanes as readily as at twenty, because the leak is
-      // per FINISHED bee and not per running one.
-      //
-      // A read of the remote needs no push credential. If it cannot be read,
-      // the tree stays: unreachable is not published, for the same reason
-      // unreadable is not clean.
-      const branchName = c.path.slice(c.path.lastIndexOf('/') + 1)
-      const localHead = await run('git', ['rev-parse', 'HEAD'], c.path, 60_000)
-      const remote = await run(
-        'git',
-        ['ls-remote', 'origin', `refs/heads/${branchName}`],
-        c.path,
-        120_000,
-      )
-      const remoteSha = remote.out.trim().split(/\s+/)[0] ?? ''
-      const published =
-        localHead.code === 0 &&
-        remote.code === 0 &&
-        remoteSha.length > 0 &&
-        remoteSha === localHead.out.trim()
-      if (!published) {
-        result.keptUnpushed.push(c.path)
-        continue
-      }
+    if (
+      reapVerdict(ST_NO, ST_NO, await unpushedFactOf(c.path), ST_YES) ===
+      WT_KEEP
+    ) {
+      result.keptUnpushed.push(c.path)
+      continue
     }
     // No `--force`, here or anywhere else in this project. A tree that refuses
     // to go is a tree a person should look at.
@@ -3348,6 +3317,73 @@ export async function reapWorktrees(
   await run('git', ['worktree', 'prune'], root, 60_000)
   result.after = measure(root)
   return result
+}
+
+/**
+ * Whether a tree holds anything uncommitted, IGNORED files included: an
+ * ignored file is still a user's file and plain `--porcelain` does not list
+ * it. Unreadable is unknown, not clean: a tree whose state cannot be read
+ * might hold the only copy of a turn's work.
+ */
+async function dirtyFactOf(path: string): Promise<number> {
+  const dirty = await run(
+    'git',
+    ['status', '--porcelain', '--ignored'],
+    path,
+    60_000,
+  )
+  if (dirty.code !== 0) return ST_UNKNOWN
+  return dirty.out.trim().length > 0 ? ST_YES : ST_NO
+}
+
+/** Whether the tree's branch carries commits nobody else has (ST_NO: none). */
+async function unpushedFactOf(path: string): Promise<number> {
+  // NOR A TREE WHOSE BRANCH CARRIES COMMITS NOBODY ELSE HAS.
+  //
+  // The container holds no push credential by design, so a commit on a bee
+  // branch lives in exactly one place: this volume. Until the salvage, "the
+  // only copy" and "uncommitted" were the same set and the dirt check covered
+  // both. The salvage breaks that: it COMMITS the work and leaves the tree
+  // clean, which made the tree eligible for removal - and the next
+  // `prepareWorktree` re-cuts with `worktree add -B queen-<issue> <base>`,
+  // which RESETS the branch to base and takes the salvage with it. The work
+  // this exists to preserve would be destroyed by the preserving, and the row
+  // would still advertise a salvaged_sha no ref reaches.
+  //
+  // Unreadable is not merged, for the same reason unreadable is not clean.
+  const ahead = await run(
+    'git',
+    ['rev-list', '--count', `${baseRef()}..HEAD`],
+    path,
+    60_000,
+  )
+  if (ahead.code === 0 && Number(ahead.out.trim() || '1') <= 0) return ST_NO
+  // UNLESS THE REMOTE ALREADY HAS IT, byte for byte.
+  //
+  // "The only copy" stops being true the moment the branch is on origin at the
+  // same commit. Measured 2026-09-20: the container had twenty-one worktrees
+  // at boot, every one kept by the check above, and the volume filled until
+  // the process was killed - then the entrypoint cleared them, and it happened
+  // again, because the leak is per FINISHED bee and not per running one.
+  //
+  // A read of the remote needs no push credential. If it cannot be read, the
+  // tree stays: unreachable is not published, for the same reason unreadable
+  // is not clean.
+  const branchName = path.slice(path.lastIndexOf('/') + 1)
+  const localHead = await run('git', ['rev-parse', 'HEAD'], path, 60_000)
+  const remote = await run(
+    'git',
+    ['ls-remote', 'origin', `refs/heads/${branchName}`],
+    path,
+    120_000,
+  )
+  const remoteSha = remote.out.trim().split(/\s+/)[0] ?? ''
+  const published =
+    localHead.code === 0 &&
+    remote.code === 0 &&
+    remoteSha.length > 0 &&
+    remoteSha === localHead.out.trim()
+  return published ? ST_NO : ST_UNKNOWN
 }
 
 /**

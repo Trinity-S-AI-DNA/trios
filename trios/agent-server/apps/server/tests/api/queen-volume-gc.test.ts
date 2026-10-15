@@ -3,11 +3,12 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   realpathSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import {
   prepareWorktree,
   reapWorktrees,
@@ -64,9 +65,9 @@ describe('the reaper refuses the things that would lose work', () => {
     const fn = text.slice(text.indexOf('export async function reapWorktrees'))
     const body = fn.slice(0, fn.indexOf('\n}\n'))
     expect(body).toContain('keptDirty')
-    expect(body).toMatch(
-      /dirty\.code !== 0 \|\| dirty\.out\.trim\(\)\.length > 0/,
-    )
+    // the card decides (worktree_keep.t27 reap_verdict); ignored files count
+    expect(body).toContain('await dirtyFactOf(c.path)')
+    expect(text).toContain("['status', '--porcelain', '--ignored']")
   })
 
   it('asks whether a bee is running BEFORE it asks whether the tree is dirty', async () => {
@@ -77,13 +78,8 @@ describe('the reaper refuses the things that would lose work', () => {
     const body = fn.slice(0, fn.indexOf('\n}\n'))
     expect(body.indexOf('opts.protect?.has(')).toBeGreaterThan(-1)
     expect(body.indexOf('opts.protect?.has(')).toBeLessThan(
-      body.indexOf("['status', '--porcelain']"),
+      body.indexOf('dirtyFactOf(c.path)'),
     )
-  })
-
-  it('treats an unreadable status as dirty, not as clean', async () => {
-    const text = await source.text()
-    expect(text).toContain('Unreadable is not clean')
   })
 
   it('never passes --force to git worktree remove', async () => {
@@ -219,6 +215,76 @@ describe('the reaper, on a real repository', () => {
       expect(gc.removed).toEqual([repo.tree('queen-3')])
       expect(existsSync(repo.tree('queen-7'))).toBe(true)
       expect(existsSync(repo.tree('queen-3'))).toBe(false)
+    } finally {
+      repo.restore()
+    }
+  })
+
+  it('keeps a tree whose only content is IGNORED files, under pressure, and prints nothing of them', async () => {
+    // gHashTag/trios#2005: `git status --porcelain` does not list ignored
+    // files, so a tree holding only an ignored secret and a binary read as
+    // clean and was removed. With every tree held the reap ends with the
+    // volume still full and removes nothing.
+    const repo = scratchRepository(['queen-3', 'queen-7'])
+    try {
+      // The shared exclude file makes both files ignored in every tree, so
+      // the only thing that differs from a clean tree is the ignored files.
+      const exclude = join(repo.root, '.git', 'info', 'exclude')
+      mkdirSync(dirname(exclude), { recursive: true })
+      writeFileSync(exclude, 'keep.secret\nkeep.bin\n')
+      for (const branch of ['queen-3', 'queen-7']) {
+        writeFileSync(join(repo.tree(branch), 'keep.secret'), 'PRIVATE-BYTES\n')
+        writeFileSync(
+          join(repo.tree(branch), 'keep.bin'),
+          Buffer.from([0, 1, 2, 255]),
+        )
+      }
+      const gc = await reapWorktrees({
+        high: 0,
+        low: 0,
+        volumeUsed: () => 90,
+      })
+      const logged = [JSON.stringify(gc)]
+      expect(gc.removed).toEqual([])
+      expect(gc.keptDirty.sort()).toEqual(
+        [repo.tree('queen-3'), repo.tree('queen-7')].sort(),
+      )
+      for (const branch of ['queen-3', 'queen-7']) {
+        expect(
+          readFileSync(join(repo.tree(branch), 'keep.secret'), 'utf8'),
+        ).toBe('PRIVATE-BYTES\n')
+        expect([...readFileSync(join(repo.tree(branch), 'keep.bin'))]).toEqual([
+          0, 1, 2, 255,
+        ])
+      }
+      expect(logged.join('')).not.toContain('PRIVATE')
+    } finally {
+      repo.restore()
+    }
+  })
+
+  it('keeps a tree whose git status cannot be read, and removes the clean one beside it', async () => {
+    // UNKNOWN IS NOT CLEAN. A tree whose state cannot be read might hold the
+    // only copy of a turn's work. The worktree's `.git` pointer is broken, so
+    // `git status` there exits non-zero; the tree and its bytes must survive
+    // the reap while an ordinary clean tree beside it is still reaped.
+    const repo = scratchRepository(['queen-3', 'queen-7'])
+    try {
+      const unreadable = repo.tree('queen-3')
+      writeFileSync(join(unreadable, 'work.txt'), 'UNSAVED-WORK\n')
+      writeFileSync(join(unreadable, '.git'), 'gitdir: /definitely/not/here\n')
+      const gc = await reapWorktrees({
+        high: 0,
+        low: 0,
+        volumeUsed: () => 90,
+      })
+      expect(gc.keptDirty).toEqual([unreadable])
+      expect(gc.removed).toEqual([repo.tree('queen-7')])
+      expect(existsSync(repo.tree('queen-7'))).toBe(false)
+      expect(readFileSync(join(unreadable, 'work.txt'), 'utf8')).toBe(
+        'UNSAVED-WORK\n',
+      )
+      expect(JSON.stringify(gc)).not.toContain('UNSAVED')
     } finally {
       repo.restore()
     }
