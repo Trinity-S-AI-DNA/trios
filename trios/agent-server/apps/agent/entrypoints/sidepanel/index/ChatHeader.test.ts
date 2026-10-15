@@ -46,6 +46,11 @@ mock.module('@wxt-dev/storage', () => ({
 
 mock.module('@/lib/credits/useCredits', () => ({
   useCredits: () => ({ data: undefined }),
+  // the frozen export set of this shared seam must carry every name
+  // any subject of the group imports (the #1504 rule) - later
+  // registrations swap the factory but the set froze at the first
+  // link, so every registrar carries the full set
+  useInvalidateCredits: () => {},
 }))
 
 const { ChatHeader } = await import('./ChatHeader')

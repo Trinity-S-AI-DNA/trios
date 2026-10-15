@@ -42,6 +42,12 @@ mock.module('@/lib/credits/useCredits', () => ({
       error: null,
     }
   },
+  // bun freezes a mock facade's export set at its first link, and
+  // this suite links before every other registrar of the credits
+  // seam in the group's run order: the stand-in must carry every
+  // named export any subject of the group imports (the #1504 rule -
+  // useChatSession pulls useInvalidateCredits).
+  useInvalidateCredits: () => {},
 }))
 
 const { UsagePage } = await import('./UsagePage')
