@@ -1225,3 +1225,142 @@ describe('scheduleResultsContract', () => {
       throw new Error('the dialog must take the retry handler')
   })
 })
+
+// ---------------------------------------------------------------------------
+// The scheduled task card (gHashTag/trios#1550), appended to this file by
+// the same readdir rule as the two blocks above: its subject imports this
+// suite's subject (the store, through useScheduledJobRuns), whose module
+// this file already materialized real behind its own stand-ins - a
+// standalone suite in the subject's group would link the store fresh and
+// trip the generated-graphql document the local run does not carry. The
+// real hook answers an empty run list in a static render - it populates
+// through effects a static render never runs - so the run history stays
+// away and what is pinned is the card frame the static mount answers,
+// plus the run-history rows, their gating and the switch label as source
+// checks, the pattern the blocks above use.
+
+const taskCardCode = () =>
+  fs
+    .readFileSync(
+      path.join(
+        path.dirname(fileURLToPath(import.meta.url)),
+        '../../entrypoints/app/scheduled-tasks/ScheduledTaskCard.tsx',
+      ),
+      'utf8',
+    )
+    .split('\n')
+    .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
+    .join('\n')
+
+const { ScheduledTaskCard } = (await import(
+  '../../entrypoints/app/scheduled-tasks/ScheduledTaskCard'
+)) as typeof import('../../entrypoints/app/scheduled-tasks/ScheduledTaskCard')
+
+const taskCardHandlers = {
+  onEdit: () => {},
+  onDelete: () => {},
+  onToggle: () => {},
+  onRun: () => {},
+  onViewRun: () => {},
+  onCancelRun: () => {},
+  onRetryRun: () => {},
+}
+
+const taskCardMarkup = (over: Partial<ScheduledJob>) =>
+  renderToStaticMarkup(
+    createElement(ScheduledTaskCard, {
+      job: {
+        id: 'job-1',
+        name: 'Morning brief',
+        query: 'Morning news digest',
+        scheduleType: 'daily',
+        scheduleTime: '09:00',
+        enabled: true,
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+        ...over,
+      },
+      ...taskCardHandlers,
+    }),
+  )
+
+describe('scheduledTaskCardContract', () => {
+  it('answers the enabled daily card: the switch on with its Disable label, the name and quoted query, the daily schedule line, the Test and Edit buttons and the delete behind its label, and keeps the Disabled badge, the provider bullet and the run history away', () => {
+    const card = taskCardMarkup({})
+    expect(card).toContain('role="switch"')
+    expect(card).toContain('aria-checked="true"')
+    expect(card).toContain('aria-label="Disable Morning brief"')
+    expect(card).toContain('Morning brief')
+    expect(card).toContain('Morning news digest')
+    expect(card).toContain('Daily at 09:00')
+    expect(card).toContain('>Test<')
+    expect(card).toContain('>Edit<')
+    expect(card).toContain('aria-label="Delete Morning brief"')
+    expect(card).toContain('lucide-play')
+    expect(card).toContain('lucide-pencil')
+    expect(card).toContain('lucide-trash-2')
+    expect(card).not.toContain('>Disabled<')
+    expect(card).not.toContain('•')
+    expect(card).not.toContain('Run History')
+  })
+
+  it('answers the disabled hourly card: the switch off with its Enable label, the Disabled badge, the every-two-hours schedule line and the last-run line in relative words', () => {
+    const card = taskCardMarkup({
+      name: 'Night brief',
+      enabled: false,
+      scheduleType: 'hourly',
+      scheduleTime: undefined,
+      scheduleInterval: 2,
+      lastRunAt: '2020-01-01T00:00:00Z',
+    })
+    expect(card).toContain('aria-checked="false"')
+    expect(card).toContain('aria-label="Enable Night brief"')
+    expect(card).toContain('>Disabled<')
+    expect(card).toContain('Every 2 hours')
+    expect(card).toContain('Last run:')
+    expect(card).toContain('years ago')
+  })
+
+  it('answers the schedule fallbacks: the single-minute interval and the unset time', () => {
+    expect(
+      taskCardMarkup({
+        scheduleType: 'minutes',
+        scheduleTime: undefined,
+        scheduleInterval: 1,
+      }),
+    ).toContain('Every minute')
+    expect(taskCardMarkup({ scheduleTime: undefined })).toContain(
+      'Not scheduled',
+    )
+  })
+
+  it('gates the run history rows on the measured statuses behind their icons and labels, keeps the View row action and the switch label on the enabled flag', () => {
+    const src = taskCardCode()
+    if (!/Run History \(\{runs\.length\}\)/.test(src))
+      throw new Error('the run history must keep its counted title')
+    if (!/run\.status === 'completed' \? \(/.test(src))
+      throw new Error('the completed runs must keep their icon branch')
+    if (!/run\.status === 'failed' \? \(/.test(src))
+      throw new Error('the failed runs must keep their icon branch')
+    if (!/<Loader2 /.test(src))
+      throw new Error('the running runs must keep the spinner icon')
+    if (!/\{run\.status === 'running' && \(/.test(src))
+      throw new Error('the cancel control must be gated on the running status')
+    if (!/aria-label="Cancel run"/.test(src))
+      throw new Error('the cancel control must keep its aria-label')
+    if (!/\{run\.status === 'failed' && \(/.test(src))
+      throw new Error('the retry control must be gated on the failed status')
+    if (!/aria-label="Retry run"/.test(src))
+      throw new Error('the retry control must keep its aria-label')
+    if (!/\n\s+View\n/.test(src))
+      throw new Error('every run row must keep its View action')
+    if (!/aria-label=\{`Delete \$\{job\.name\}`\}/.test(src))
+      throw new Error('the delete control must keep its name label')
+    if (
+      !/aria-label=\{`\$\{job\.enabled \? 'Disable' : 'Enable'\} \$\{job\.name\}`\}/.test(
+        src,
+      )
+    )
+      throw new Error('the switch label must keep its enabled-branch naming')
+  })
+})
