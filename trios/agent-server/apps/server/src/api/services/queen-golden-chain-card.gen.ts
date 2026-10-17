@@ -40,6 +40,12 @@ export const GC_OUT_UNKNOWN_PARENT = 6 satisfies number;
 // t27c gen-ts: fn gc_since was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn gc_land was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn gc_head_after was not emitted -- this backend lowers declarations, not bodies.
+export const GC_RV_STANDS = 0 satisfies number;
+export const GC_RV_WAIT = 1 satisfies number;
+export const GC_RV_SEND_BACK = 2 satisfies number;
+// t27c gen-ts: fn gc_merge_kind was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn gc_region_step was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn gc_region_counts was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -52,6 +58,14 @@ export const GC_OUT_UNKNOWN_PARENT = 6 satisfies number;
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -62,7 +76,7 @@ export const EDIT_WHOLE = 0 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["GC_STAGES", "GC_SPEC", "GC_GEN", "GC_SEAL", "GC_TEST", "GC_RECEIPT", "GC_DONE", "GC_V_NONE", "GC_V_PASS", "GC_V_REUSED", "GC_V_FAIL", "GC_ADV_FORWARD", "GC_ADV_STALE", "GC_ADV_NOT_GOLDEN", "GC_ADV_DISORDER", "GC_EDIT_DERIVED", "GC_PAIR_APART", "GC_PAIR_REGEN", "GC_PAIR_MEET", "GC_OUT_FORWARD", "GC_OUT_CARRIED", "GC_OUT_REGEN", "GC_OUT_REJUDGE", "GC_OUT_CONFLICT", "GC_OUT_NOT_GOLDEN", "GC_OUT_UNKNOWN_PARENT", "EDIT_APPEND", "EDIT_LINES", "EDIT_WHOLE"] as const;
+export const __DECL_ORDER__ = ["GC_STAGES", "GC_SPEC", "GC_GEN", "GC_SEAL", "GC_TEST", "GC_RECEIPT", "GC_DONE", "GC_V_NONE", "GC_V_PASS", "GC_V_REUSED", "GC_V_FAIL", "GC_ADV_FORWARD", "GC_ADV_STALE", "GC_ADV_NOT_GOLDEN", "GC_ADV_DISORDER", "GC_EDIT_DERIVED", "GC_PAIR_APART", "GC_PAIR_REGEN", "GC_PAIR_MEET", "GC_OUT_FORWARD", "GC_OUT_CARRIED", "GC_OUT_REGEN", "GC_OUT_REJUDGE", "GC_OUT_CONFLICT", "GC_OUT_NOT_GOLDEN", "GC_OUT_UNKNOWN_PARENT", "GC_RV_STANDS", "GC_RV_WAIT", "GC_RV_SEND_BACK", "EDIT_APPEND", "EDIT_LINES", "EDIT_WHOLE"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not
