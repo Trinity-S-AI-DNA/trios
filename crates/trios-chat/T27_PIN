@@ -1,0 +1,19 @@
+# T27_PIN: t27c gen-rust files vendored into crates/trios-chat.
+#
+# One row per vendored file (rings/<R>/src/t27gen/<stem>.rs). Columns are
+# separated by " | ":
+#   file           path relative to crates/trios-chat/
+#   spec path      .t27 spec path in gHashTag/t27
+#   t27 SHA        40-hex gHashTag/t27 commit the spec was generated from
+#   t27c built_by  the built_by string of the t27c that generated the file
+#   sha256         64-hex lowercase SHA-256 of the vendored file (always filled)
+#   seal file      .trinity/seals/<file>.json on that t27 SHA, or "unsealed on master"
+#
+# tests/t27_pin.rs recomputes the sha256 of every row. Lines starting with '#'
+# and blank lines are ignored.
+file | spec path | t27 SHA | t27c built_by | sha256 | seal file
+rings/CR-CHAT-01/src/t27gen/key_package_expiry_guard.rs | specs/port/trios/crates/trios-chat/rings/CR-CHAT-01/src/key_package_expiry_guard.t27 | 5e5493cabbb99f21f8f9f6e3a00150fb3eb0d230 | t27c-bootstrap@0.5.2+5e5493cab | 8d2546de4d8190f114e46cb2b78c765099d4897c9444a869f3ba2cae5f83a469 | src_port::trios::crates::trios-chat::rings::CR-CHAT-01::src::key_package_expiry_guard.json
+rings/CR-CHAT-02/src/t27gen/epoch_rollover_wraparound_guard.rs | specs/port/trios/crates/trios-chat/rings/CR-CHAT-02/src/epoch_rollover_wraparound_guard.t27 | 5e5493cabbb99f21f8f9f6e3a00150fb3eb0d230 | t27c-bootstrap@0.5.2+5e5493cab | 3760df6b099c9707630cc63f6d3ed619cbd43b7703a80f52c6ee04aa23a9f085 | src_port::epoch_rollover_wraparound_guard.json
+rings/CR-CHAT-03/src/t27gen/ratchet_tree_resolution_guard.rs | specs/port/trios/crates/trios-chat/rings/CR-CHAT-03/src/ratchet_tree_resolution_guard.t27 | 5e5493cabbb99f21f8f9f6e3a00150fb3eb0d230 | t27c-bootstrap@0.5.2+5e5493cab | abcaf63f0885ca8e86b8e107171df4a8472f7a37b6ca04921c1799a9e40e907a | src_port::ratchet_tree_resolution_guard.json
+rings/CR-CHAT-03/src/t27gen/unmerged_leaves_bound_guard.rs | specs/port/trios/crates/trios-chat/rings/CR-CHAT-03/src/unmerged_leaves_bound_guard.t27 | 5e5493cabbb99f21f8f9f6e3a00150fb3eb0d230 | t27c-bootstrap@0.5.2+5e5493cab | 868119eb230928668fbacd538d007340e597e46ea077ab99270d034f089d7db6 | src_port::unmerged_leaves_bound_guard.json
+rings/CR-CHAT-07/src/t27gen/cover_decoy_ratio_governor.rs | specs/port/trios/crates/trios-chat/rings/CR-CHAT-07/src/cover_decoy_ratio_governor.t27 | 5e5493cabbb99f21f8f9f6e3a00150fb3eb0d230 | t27c-bootstrap@0.5.2+5e5493cab | 27399ff1575851a119ecc0bc4ca1fc2527a4bf089ad0831e157233a61859835f | src_port::cover_decoy_ratio_governor.json

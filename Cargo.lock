@@ -6240,6 +6240,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "trios-chat"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "rand 0.8.6",
+ "rand_core 0.6.4",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "trios-chat-br-output",
+ "x25519-dalek",
+]
+
+[[package]]
 name = "trios-chat-br-io-chat-05"
 version = "0.1.0"
 dependencies = [

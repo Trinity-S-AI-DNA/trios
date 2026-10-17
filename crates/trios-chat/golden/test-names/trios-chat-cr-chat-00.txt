@@ -1,0 +1,9 @@
+tests::counter_overflow_panics: test
+tests::counter_zero_and_next: test
+tests::dest_hash_size_is_16: test
+tests::envelope_meta_serde_roundtrip: test
+tests::error_aead_renders: test
+tests::error_invariant_renders: test
+tests::law_ids_are_canonical_and_unique: test
+tests::law_table_has_exactly_twelve_rows: test
+tests::session_id_hex_roundtrip: test

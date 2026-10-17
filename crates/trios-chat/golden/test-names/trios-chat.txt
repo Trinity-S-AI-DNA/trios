@@ -1,0 +1,5 @@
+law_count_locked: test
+law_titles_locked: test
+laws_hash_matches_pinned_value: test
+laws_hash_nonzero_and_stable: test
+pinned_files_match_sha256: test

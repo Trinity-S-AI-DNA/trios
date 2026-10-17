@@ -1,0 +1,16 @@
+# Per package: test names listed by `cargo test -p <package> -- --list` and the pass/fail sums of `cargo test -p <package>` (DATABASE_URL unset).
+# cargo 1.94.0 (85eff7c80 2026-01-15); rustc 1.94.0 (4a4ef493e 2026-03-02); repository Cargo.lock; base adbe1a1 (trios main 8b229e9 + workspace member).
+# trios-chat-br-io-chat-05: its 1 test returns early without DATABASE_URL, so it checks nothing (owner decision D12).
+trios-chat-cr-chat-00 listed=9 passed=9 failed=0 exit=0
+trios-chat-cr-chat-01 listed=476 passed=476 failed=0 exit=0
+trios-chat-cr-chat-02 listed=432 passed=431 failed=0 exit=0
+trios-chat-cr-chat-03 listed=521 passed=520 failed=0 exit=0
+trios-chat-cr-chat-04 listed=395 passed=395 failed=0 exit=0
+trios-chat-cr-chat-05 listed=437 passed=436 failed=0 exit=0
+trios-chat-cr-chat-06 listed=404 passed=404 failed=0 exit=0
+trios-chat-cr-chat-07 listed=381 passed=381 failed=0 exit=0
+trios-chat-cr-chat-laws listed=4 passed=4 failed=0 exit=0
+trios-chat-br-output listed=4 passed=4 failed=0 exit=0
+trios-chat-br-io-chat-05 listed=1 passed=1 failed=0 exit=0
+trios-chat-br-io-chat-07 listed=6 passed=6 failed=0 exit=0
+trios-chat listed=5 passed=5 failed=0 exit=0
