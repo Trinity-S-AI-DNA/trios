@@ -22,6 +22,11 @@ path = "src/bin/e2e_chat_25.rs"
 name = "falsifier_runner"
 path = "src/bin/falsifier_runner.rs"
 
+# Deterministic behaviour vectors (no OsRng); output frozen in golden/vectors.txt.
+[[bin]]
+name = "golden_vectors"
+path = "src/bin/golden_vectors.rs"
+
 [dependencies]
 # Re-export ring — the only allowed runtime dep.
 trios-chat-br-output = { path = "rings/BR-OUTPUT-CHAT" }
@@ -37,3 +42,5 @@ serde_json        = { workspace = true }
 
 [dev-dependencies]
 rand              = { workspace = true }
+# tests/t27_pin.rs: SHA-256 of each vendored t27c gen-rust file listed in T27_PIN.
+sha2              = "0.10"

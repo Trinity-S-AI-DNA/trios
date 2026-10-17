@@ -1,0 +1,4 @@
+tests::laws_are_unique: test
+tests::laws_hash_stable_within_run: test
+tests::laws_have_canonical_prefix: test
+tests::twelve_laws_present: test

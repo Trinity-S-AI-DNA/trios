@@ -1,0 +1,6 @@
+tests::ae01_empty_queue_emits_cover_every_tick: test
+tests::ae02_queued_reals_emit_first_then_cover: test
+tests::ae03_async_matches_pure_scheduler: test
+tests::ae04_closed_channel_halts_gracefully: test
+tests::ae05_logical_time_advances_by_n_ticks: test
+tests::green_summary_async_wire_emitter: test
