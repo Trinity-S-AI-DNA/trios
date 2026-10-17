@@ -71,6 +71,7 @@ members = [
     "crates/trios-chat/rings/BR-OUTPUT-CHAT",
     "crates/trios-chat/rings/BR-IO-CHAT-05",
     "crates/trios-chat/rings/BR-IO-CHAT-07",
+    "crates/trios-chat",
     # Rust backend consolidation (Wave 0) — domain scaffolds
     "crates/trios-agent-loop",
     "crates/trios-agent-loop/rings/AL-00",
