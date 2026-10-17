@@ -1,0 +1,41 @@
+name: Actor simulation nightly (queen)
+# The actor simulation gate (gHashTag/t27 specs/queen/simulation.t27) runs
+# every night on the `queen` branch, where the Queen's actor runtime lives
+# (gHashTag/trios#1873 and #1868, plan #1763, ledger #1729).
+#
+# WHY THIS FILE IS ON main. GitHub runs a `schedule` only from the default
+# branch, and this repository's default branch is `main`, so a cron in
+# queen's own .github/workflows/queen-actors-sim.yml would never fire. This
+# workflow only dispatches that one on `queen` with `nightly: true`; the job,
+# its steps and its failure report live on `queen` beside the code they test.
+# A failed night fails that run, and the run comments on (or opens) the
+# trios issue labelled sim-nightly with the seed and the first broken
+# invariant.
+#
+# Anchor: phi^2 + phi^-2 = 3.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"  # 02:17 UTC every night
+  workflow_dispatch: {}
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: queen-sim-nightly
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    name: Dispatch the actor simulation on queen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch queen-actors-sim.yml on queen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run queen-actors-sim.yml --repo "$GITHUB_REPOSITORY" \
+            --ref queen -f nightly=true -f recreate=none
+          echo "Dispatched; the run is listed under Actions > Actor simulation (branch queen)."
