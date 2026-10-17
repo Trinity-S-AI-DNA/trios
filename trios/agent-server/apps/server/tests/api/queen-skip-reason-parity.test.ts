@@ -106,9 +106,8 @@ function extractClassifierBody(source: string): string {
 const classifierBody = extractClassifierBody(routeText)
 
 /** Every `line.includes(` call in the classifier, counted, not assumed. */
-const includeCallCount = (
-  classifierBody.match(/line\.includes\(/g) ?? []
-).length
+const includeCallCount = (classifierBody.match(/line\.includes\(/g) ?? [])
+  .length
 
 /** One rule of the classifier: its marker and its category. */
 type SkipRule = { marker: string; category: string }
@@ -253,12 +252,14 @@ function calledSentences(site: AppendSite): string[] | null {
     const body = source.slice(at)
     const end = body.indexOf('\n    }')
     const found = [
-      ...body.slice(0, end === -1 ? undefined : end).matchAll(
-        /detail:\s*"((?:[^"\\]|\\.)*)"/g,
-      ),
+      ...body
+        .slice(0, end === -1 ? undefined : end)
+        .matchAll(/detail:\s*"((?:[^"\\]|\\.)*)"/g),
     ].map((m) => m[1])
     if (!found.length) {
-      throw new Error(`no detail sentence found in ${name} - this gate is checking nothing`)
+      throw new Error(
+        `no detail sentence found in ${name} - this gate is checking nothing`,
+      )
     }
     return found
   }
@@ -330,7 +331,10 @@ describe('queen skip reason parity', () => {
             category: worst === undefined ? 'classified' : 'other',
           }
         }
-        return { line: site.line, category: classifyWithMarkers(siteSentence(site)) }
+        return {
+          line: site.line,
+          category: classifyWithMarkers(siteSentence(site)),
+        }
       })
       .filter((result) => result.category === 'other')
     expect(

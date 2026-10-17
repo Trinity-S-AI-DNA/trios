@@ -345,6 +345,37 @@ derive_worker_cap() {
   echo "$derived"
 }
 
+# BEGIN keep_bee_worktrees (tests/api/entrypoint-worktrees.test.ts runs this slice)
+# Reads and reports only. Nothing under .worktrees/ is removed, moved, chowned
+# or pruned: an unknown state is held, never repaired. `git worktree prune` is
+# not run either - it drops admin records, and a directory that looks missing
+# (an unmounted path, a slow volume) would lose its record for good.
+keep_bee_worktrees() {
+  worktrees_dir="$1/.worktrees"
+  [ -d "$worktrees_dir" ] || return 0
+  kept=$(ls -A1 "$worktrees_dir" 2>/dev/null | wc -l | tr -d ' ')
+  [ "$kept" != "0" ] || return 0
+  free_mb=$(df -Pm "$1" 2>/dev/null | awk 'NR==2 {print $4}')
+  echo "[entrypoint] keeping $kept bee worktree(s) from a previous container (${free_mb:-?} MiB free); none is removed or pruned"
+  return 0
+}
+
+# The ownership repair of the checkout (see the long comment where it is
+# called). .worktrees/ and .git/worktrees/ are pruned out of both finds: the
+# first holds kept user data and the second its admin records, and their
+# owners and modes are part of what is kept. Nothing there is ever chowned.
+repair_checkout_ownership() {
+  repo="$1"
+  owner="$2"
+  [ -d "$repo" ] || return 0
+  if [ -n "$(find "$repo" \( -path "$repo/.worktrees" -o -path "$repo/.git/worktrees" \) -prune -o ! -user "$owner" -print -quit 2>/dev/null)" ]; then
+    echo "[entrypoint] files inside $repo are not owned by $owner; repairing those"
+    find "$repo" \( -path "$repo/.worktrees" -o -path "$repo/.git/worktrees" \) -prune -o ! -user "$owner" -exec chown "$owner" {} + 2>/dev/null || true
+  fi
+  return 0
+}
+# END keep_bee_worktrees
+
 TRIOS_QUEEN_MAX_WORKERS=$(derive_worker_cap)
 export TRIOS_QUEEN_MAX_WORKERS
 echo "[entrypoint] TRIOS_QUEEN_MAX_WORKERS=$TRIOS_QUEEN_MAX_WORKERS (derived)"
@@ -377,9 +408,16 @@ if [ -n "$TRIOS_TOOL_SHELL_USER" ] && id "$TRIOS_TOOL_SHELL_USER" >/dev/null 2>&
   # edge answered 502 for ten minutes. Only files root created since the last
   # start can have the wrong owner, and root creates none here; a fresh volume
   # is the one case that needs the walk, and it is empty then.
+  #
+  # NOT RECURSIVE ANY MORE (gHashTag/trios#2005). The walk went into
+  # .worktrees/ and .git/worktrees/ and changed owners and modes of kept user
+  # data whenever the volume root had the wrong owner - a restored snapshot
+  # is root-owned. Only the workspace directory itself is settled here; the
+  # checkout is repaired below by repair_checkout_ownership, which never
+  # enters those two directories.
   if [ "$(stat -c %U "$WORKSPACE_DIR" 2>/dev/null)" != "$TRIOS_TOOL_SHELL_USER" ]; then
-    echo "[entrypoint] $WORKSPACE_DIR is not owned by $TRIOS_TOOL_SHELL_USER; settling ownership once"
-    chown -R "$TRIOS_TOOL_SHELL_USER" "$WORKSPACE_DIR"
+    echo "[entrypoint] $WORKSPACE_DIR is not owned by $TRIOS_TOOL_SHELL_USER; settling the directory itself (not recursive)"
+    chown "$TRIOS_TOOL_SHELL_USER" "$WORKSPACE_DIR"
   fi
   # AND INSIDE THE CHECKOUT, which the test above cannot see. Measured on the
   # running deployment 2026-09-20:
@@ -396,42 +434,22 @@ if [ -n "$TRIOS_TOOL_SHELL_USER" ] && id "$TRIOS_TOOL_SHELL_USER" >/dev/null 2>&
   # case costs one stat and the 45 GB walk that once outlasted the 300 s
   # healthcheck (2026-09-03) cannot come back. The repair walks the checkout
   # only - never the worktrees beside it - and changes only what is wrong.
-  if [ -d "$REPO_DIR" ] && [ -n "$(find "$REPO_DIR" ! -user "$TRIOS_TOOL_SHELL_USER" -print -quit 2>/dev/null)" ]; then
-    echo "[entrypoint] files inside $REPO_DIR are not owned by $TRIOS_TOOL_SHELL_USER; repairing those"
-    find "$REPO_DIR" ! -user "$TRIOS_TOOL_SHELL_USER" -exec chown "$TRIOS_TOOL_SHELL_USER" {} + 2>/dev/null || true
-  fi
-  # BEE WORKTREES FROM A PREVIOUS LIFE. At entrypoint time no bee is running -
-  # this process is what starts the server that starts them - so every
-  # directory under .worktrees/ belongs to a container that is already gone.
-  #
-  # They are not free. Measured on the running deployment 2026-09-20: every
-  # tick for six minutes chose an issue and then refused to start it -
-  #
-  #   Queen tick chose an issue but the container cannot carry another bee
-  #     issue=4438 resource="disk"
-  #
-  # - with twenty lanes open and 684 candidates waiting. The volume had filled
-  # with worktrees nobody could use; an earlier reading of the same volume
-  # found 41 of them holding 45 GB and three million inodes.
-  #
-  # `git worktree prune` alone does not do it: it drops the ADMIN records for
-  # directories that are already gone, and these directories are still there.
-  if [ -d "$REPO_DIR/.worktrees" ]; then
-    stale=$(ls -1 "$REPO_DIR/.worktrees" 2>/dev/null | wc -l | tr -d ' ')
-    if [ "$stale" != "0" ]; then
-      free_before=$(df -Pm "$REPO_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
-      echo "[entrypoint] removing $stale bee worktree(s) left by a previous container (${free_before:-?} MiB free)"
-      $AS_USER "rm -rf '$REPO_DIR/.worktrees'/* '$REPO_DIR/.worktrees'/.[!.]*" 2>/dev/null || true
-      $AS_USER "git -C '$REPO_DIR' worktree prune" >/dev/null 2>&1 || true
-      free_after=$(df -Pm "$REPO_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
-      echo "[entrypoint] worktrees cleared; ${free_after:-?} MiB free now"
-    fi
-  fi
+  repair_checkout_ownership "$REPO_DIR" "$TRIOS_TOOL_SHELL_USER"
+  # BEE WORKTREES FROM A PREVIOUS LIFE ARE USER DATA, AND ARE KEPT. This block
+  # used to `rm -rf` every directory under .worktrees/ and then prune, on the
+  # reading that nothing there could matter. It can: a worktree holds staged,
+  # unstaged, untracked and ignored files, local commits and its admin record,
+  # and the commits-only bundle stored at drain captures none of the rest.
+  # A full disk is reported, not cured by deleting; the server's own resource
+  # guard refuses new bees (resource="disk", measured 2026-09-20) and an
+  # operator frees space from a verified copy. See keep_bee_worktrees above.
   echo "[entrypoint] git runs as $TRIOS_TOOL_SHELL_USER; root does not enter the checkout"
 else
   AS_USER="sh -c"
   echo "[entrypoint] no unprivileged account configured; git runs as the current user"
 fi
+# Both branches above: kept worktrees are reported whoever runs git.
+keep_bee_worktrees "$REPO_DIR"
 
 # An agent that commits needs an author. Without one git refuses the commit
 # with a message about --global config, which reads as a broken tool rather

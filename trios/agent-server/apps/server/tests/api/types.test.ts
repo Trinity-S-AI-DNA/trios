@@ -23,10 +23,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import {
-  AgentLLMConfigSchema,
-  ChatRequestSchema,
-} from '../../src/api/types'
+import { AgentLLMConfigSchema, ChatRequestSchema } from '../../src/api/types'
 
 const UUID = '123e4567-e89b-12d3-a456-426614174000'
 
@@ -62,8 +59,7 @@ describe('AgentLLMConfigSchema', () => {
 
   it('refuses a provider outside the shared enum', () => {
     expect(
-      AgentLLMConfigSchema.safeParse({ provider: 'nope', model: 'm' })
-        .success,
+      AgentLLMConfigSchema.safeParse({ provider: 'nope', model: 'm' }).success,
     ).toBe(false)
   })
 })

@@ -359,6 +359,63 @@ describe('PgLink over PostgreSQL: the defects, reproduced', () => {
     expect(await rowsFor(2)).toBe(0)
   }, 90_000)
 
+  it('a stopped node handles and acknowledges no mail, even from a read that was on its way when it stopped', async () => {
+    if (!scratch) return
+    // trios#1810: the read of the poll that was running when stop() was
+    // called reached the store after the sends below, handled them on the
+    // stopped node and acknowledged them; the store then held 0 rows, not 5.
+    // Here that read is held until the sends are in, so it happens every run.
+    const isRead = (sql: string) =>
+      sql.includes('FROM queen_actor_mail') && /^\s*SELECT id, to_inc/.test(sql)
+    let hold = false
+    let held = 0
+    let release: () => void = () => undefined
+    const released = new Promise<void>((r) => {
+      release = r
+    })
+    const a = await node(1)
+    const b = await node(2, (pool) => {
+      const query = pool.query.bind(pool) as (
+        sql: unknown,
+        params?: unknown,
+      ) => Promise<unknown>
+      ;(pool as unknown as { query: unknown }).query = async (
+        sql: unknown,
+        params?: unknown,
+      ) => {
+        const text =
+          typeof sql === 'string'
+            ? sql
+            : String((sql as { text?: string }).text)
+        if (hold && isRead(text)) {
+          held++
+          await released
+        }
+        return query(sql, params)
+      }
+      return pool
+    })
+    await until(() => a.link.up(2) && b.link.up(1), 12_000)
+    const got: number[] = []
+    const x = b.sys.spawn<number>({
+      name: 'x',
+      receive: (n) => void got.push(n),
+    })
+    hold = true
+    await until(() => held > 0, 5000)
+    expect(held).toBeGreaterThan(0)
+    const stopping = b.link.stop()
+    for (let i = 0; i < 5; i++) a.sys.send(x, i)
+    await until(() => a.link.stats.sent >= 5, 5000)
+    expect(a.link.stats.sent).toBe(5)
+    release()
+    await stopping
+    await sleep(1500)
+    expect(got).toEqual([])
+    expect(b.link.stats.delivered).toBe(0)
+    expect(await rowsFor(2)).toBe(5)
+  }, 60_000)
+
   it('a turn that holds the loop for 25 s does not make its node look dead', async () => {
     if (!scratch) return
     const a = await node(1)

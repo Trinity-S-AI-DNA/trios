@@ -82,6 +82,12 @@ const GITHUB_TOOLS = [
 
 type AnyRecord = Record<string, unknown>
 
+/** The part of an advertised JSON input schema the contract checks. */
+type SchemaOf = {
+  properties?: Record<string, AnyRecord>
+  required?: string[]
+}
+
 /** Build a full set of stand-in deps; failures are toggled via the mode. */
 function makeDeps(mode: {
   railway: AnyRecord | null
@@ -312,7 +318,8 @@ async function startSession(deps: BridgeDeps) {
 
 /** First text block of a tool result. */
 function textOf(result: AnyRecord): string {
-  const part = result.content?.find((block: AnyRecord) => block.type === 'text')
+  const blocks = result.content as AnyRecord[] | undefined
+  const part = blocks?.find((block) => block.type === 'text')
   return String(part?.text ?? '')
 }
 
@@ -335,11 +342,11 @@ describe('bridgeServerContract', () => {
     const byName = new Map(listed.tools.map((t) => [t.name, t]))
     const analyze = byName.get('gitbutler_analyze_ui')
     expect(analyze?.description).toContain('screenshot of the GitButler UI')
-    const analyzeSchema = analyze?.inputSchema as AnyRecord
+    const analyzeSchema = analyze?.inputSchema as SchemaOf
     expect(analyzeSchema.properties?.page_id?.type).toBe('number')
     expect(analyzeSchema.required).toBeUndefined()
     const commit = byName.get('gitbutler_commit_visible')
-    const commitSchema = commit?.inputSchema as AnyRecord
+    const commitSchema = commit?.inputSchema as SchemaOf
     expect(commitSchema.properties?.message?.type).toBe('string')
     expect(commitSchema.properties?.message?.minLength).toBe(1)
     expect(commitSchema.properties?.message?.maxLength).toBe(2048)
@@ -464,10 +471,10 @@ describe('bridgeServerContract', () => {
     expect(fenced).not.toBeNull()
     const fencedJson = fenced?.[1]
     expect(fencedJson).toBeDefined()
-    const structured = JSON.parse(fencedJson) as AnyRecord
+    const structured = JSON.parse(fencedJson ?? '') as AnyRecord
     expect(structured.activeBranch).toBe('igla/main')
     expect(structured.isClean).toBe(false)
-    expect(structured.changedFiles[0]).toEqual({
+    expect((structured.changedFiles as AnyRecord[])[0]).toEqual({
       path: 'src/bridge.ts',
       status: 'modified',
       staged: true,
@@ -627,8 +634,9 @@ describe('bridgeServerContract', () => {
     )
     expect(plan.ok).toBe(true)
     expect(plan.reason).toContain('Dry run')
-    expect(plan.plan.strategy).toBe('by-directory')
-    const planBranches = plan.plan.branches as AnyRecord[]
+    const planBody = plan.plan as AnyRecord
+    expect(planBody.strategy).toBe('by-directory')
+    const planBranches = planBody.branches as AnyRecord[]
     expect(planBranches.map((b) => b.branchName)).toEqual([
       'igla/main/src',
       'igla/main/docs',

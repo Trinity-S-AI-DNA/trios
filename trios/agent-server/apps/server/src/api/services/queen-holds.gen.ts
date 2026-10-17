@@ -20,6 +20,17 @@ export const HP_CURRENT = 2 satisfies number;
 // t27c gen-ts: fn path_to was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn path_within was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn held_part was not emitted -- this backend lowers declarations, not bodies.
+export const CL_FREE = 0 satisfies number;
+export const CL_LIVE = 1 satisfies number;
+export const CL_DONE = 2 satisfies number;
+// t27c gen-ts: fn send_back_claim was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn accept_claim was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn held_stage was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -32,10 +43,11 @@ export const HP_CURRENT = 2 satisfies number;
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a InvariantBlock was not emitted -- it is checked by the compiler, not by the artifact.
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["HS_WORKING", "HS_SEND_BACK", "HS_AWAITING", "HS_ESCALATED", "HS_DONE", "HOLD_STAGES", "AWAITING_HOLD_MINUTES", "SEND_BACK_HOLD_MINUTES", "HP_APART", "HP_STORED", "HP_CURRENT"] as const;
+export const __DECL_ORDER__ = ["HS_WORKING", "HS_SEND_BACK", "HS_AWAITING", "HS_ESCALATED", "HS_DONE", "HOLD_STAGES", "AWAITING_HOLD_MINUTES", "SEND_BACK_HOLD_MINUTES", "HP_APART", "HP_STORED", "HP_CURRENT", "CL_FREE", "CL_LIVE", "CL_DONE"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

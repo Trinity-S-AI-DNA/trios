@@ -40,6 +40,7 @@
     "lint": "bunx biome check",
     "lint:fix": "bunx biome check --write --unsafe",
     "gen:cdp": "bun scripts/codegen/cdp-protocol.ts",
+    "card:worktree-keep": "bun scripts/build/worktree-keep-card.ts",
     "generate:models": "bun scripts/generate-models.ts"
   },
   "repository": "browseros-ai/BrowserOS-server",

@@ -51,6 +51,14 @@ import {
   handRoundToBeeActors,
 } from './queen-bee-actors-round'
 import { githubCiDeps, takeBackRefusedAcceptances } from './queen-ci-verdict'
+import { type ClaimLease, claimOf, type DispatchClaim } from './queen-claim'
+import {
+  FREE_ATTEMPT_CEILING as CLAIM_FREE_ATTEMPT_CEILING,
+  REVIEWER_MISS_CEILING as CLAIM_REVIEWER_MISS_CEILING,
+  DEFAULT_SEND_BACK_CEILING,
+  SEND_BACK_FLOOR_MINUTES,
+  WAIT_FROZEN_FLOOR_MINUTES,
+} from './queen-claim-card.gen'
 import { contributorRuntime } from './queen-contributor-keys'
 import {
   clearAssigns,
@@ -92,8 +100,14 @@ import {
 import { drainBoundedEnabled } from './queen-drain'
 import { pruneEvents, wakesHere } from './queen-events'
 import { ACTOR_STREAM } from './queen-events.gen'
-import { GC_RV_SEND_BACK, GC_RV_WAIT } from './queen-golden-chain-card.gen'
-import { heldPaths, type IssueNow } from './queen-holds'
+import {
+  claimOfState,
+  heldPaths,
+  type IssueNow,
+  releaseDeadClaimsEnabled,
+  sendBackClaim,
+} from './queen-holds'
+import { CL_FREE } from './queen-holds.gen'
 import {
   advanceJobs,
   defaultJobIo,
@@ -136,13 +150,9 @@ import {
 } from './queen-review-loop'
 import {
   CEILING_FLOOR_MINUTES,
-  escalationKind,
-  KIND_SEND_BACK_CEILING,
   MAX_RELEASES,
-  nextStep,
   OBSOLETE_STATE,
   RETRY_FLOOR_MINUTES,
-  stateOfStep,
 } from './queen-review-valve'
 import {
   chooseReviewerLane,
@@ -743,8 +753,10 @@ const isoSeconds = (value: unknown): string =>
  *     delivery count is exhausted.
  *   - `idle` defaults to 0, so every existing caller and test keeps today's
  *     behaviour until it passes the new argument.
+ *
+ * The hour itself is the claim card's (specs/queen/claim.t27).
  */
-export const SEND_BACK_IDLE_FLOOR_MS = 60 * 60 * 1000
+export const SEND_BACK_IDLE_FLOOR_MS = SEND_BACK_FLOOR_MINUTES * 60 * 1000
 
 /**
  * The same defect in the third state, with a much longer floor.
@@ -763,8 +775,10 @@ export const SEND_BACK_IDLE_FLOOR_MS = 60 * 60 * 1000
  * to flush will parse on a later sweep - so the clock must be long enough that
  * only a genuinely frozen one is released. A send-back gets no second look at
  * all, which is why its floor is an hour.
+ *
+ * The six hours are the claim card's (specs/queen/claim.t27).
  */
-export const WAIT_FROZEN_FLOOR_MS = 6 * 60 * 60 * 1000
+export const WAIT_FROZEN_FLOOR_MS = WAIT_FROZEN_FLOOR_MINUTES * 60 * 1000
 
 /**
  * The floor on an empty attempt; see `stateOfDispatch`. From
@@ -796,134 +810,55 @@ export const CEILING_RELEASE_MS = CEILING_FLOOR_MINUTES * 60 * 1000
  */
 export const MAX_CEILING_RELEASES = MAX_RELEASES
 
+/**
+ * holds.t27 send_back_claim behind TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (t27#9111):
+ * whether a send-back's issue is free at once. `flag` is the caller's reading
+ * of the flag, the environment's when it passes none.
+ */
+function nobodyComesBack(
+  flag: boolean | undefined,
+  sendBacks: number,
+  ceiling: number,
+): boolean {
+  if (!(flag ?? releaseDeadClaimsEnabled())) return false
+  return sendBackClaim(sendBacks, ceiling) === CL_FREE
+}
+
+/**
+ * What a dispatch row claims, decided by the claim card (gHashTag/t27
+ * specs/queen/claim.t27, gHashTag/trios#1767) as generated wasm; see
+ * `queen-claim.ts`. The card imports the review valve's escalation_kind and
+ * next_step, so the valve is still its one home.
+ *
+ * One check stays in front of the card, as it stood on `queen` when this card
+ * was merged in (#1893): a send-back that nobody comes back to, behind
+ * TRIOS_QUEEN_RELEASE_DEAD_CLAIMS (off by default), frees its issue at once.
+ * It is asked only of a finished row whose verdict is `sendBack`, exactly where
+ * the hand-written rule asked it, before the send-back's own hour. With the
+ * flag off the card answers alone, as proven in
+ * tests/api/queen-claim-card.test.ts.
+ *
+ * The hand-written body this replaced, with every measurement its comments
+ * recorded, is kept verbatim in tests/api/queen-claim-card.test.ts: the card
+ * is proven there to give its answer for every input the round can pass.
+ */
 export function stateOfDispatch(
   finished: boolean,
   reviewState: unknown,
-  lease: {
-    idleMs?: number
-    sendBacks?: number
-    ceiling?: number
-    /** How many times this issue's ceiling has already been handed back. */
-    releases?: number
-    /** The escalation's kind is read from these (specs/queen/review_valve.t27). */
-    criteria?: number
-    freeAttempts?: number
-    reviewerMisses?: number
-  } = {},
-):
-  | 'running'
-  | 'accepted'
-  | 'rejected'
-  | 'awaitingReview'
-  | 'failed'
-  | 'cancelled' {
-  if (!finished) return 'running'
-  const verdict = String(reviewState ?? '')
-  if (verdict === 'accept') return 'accepted'
-  const idleMs = lease.idleMs ?? 0
-  const sendBacks = lease.sendBacks ?? 0
-  const releases = lease.releases ?? 0
-  // Read from QueenRetryPolicy.maximumRealAttempts rather than restated, so
-  // there is one ceiling and not two that agree until someone edits one.
-  const ceiling = lease.ceiling ?? 2
-
-  // A verdict that SAYS failed is a failure. This case was missing, so
-  // `review_state = 'failed'` fell through to `awaitingReview` at the bottom -
-  // a LIVE claim in `QueenDelegationPolicy.claimOnIssue` - and the issue stayed
-  // held by the very row that recorded its release.
-  //
-  // Measured 2026-09-04: five dispatches were deliberately set to `failed` to
-  // return their issues to the pool (#1133, #1175, #1216, #1240, #1311). All
-  // five stayed in `claimed`, the tick kept refusing with "nothing to choose"
-  // against 22 candidates, and the swarm sat at zero bees of four. The write
-  // was correct; the reader had no case for it.
-  //
-  // The function already RETURNS 'failed' two lines below for a send-back that
-  // outlived its floor. It could produce the state and not recognise it.
-  if (verdict === 'failed' || verdict === 'cancelled') return 'failed'
-  // An EMPTY attempt committed nothing and said nothing, so there is no work
-  // to hold files for and no bee expected back to them. Measured 2026-09-17,
-  // most of the live waits on the board were exactly this - turns killed by a
-  // deploy or ended in seconds by a 1302 - each holding its boundary for six
-  // hours before the wait valve let go, while 30 of 32 worker lanes sat idle.
-  //
-  // Released after a SHORT floor, not at once. With no floor the same issue
-  // was chosen again in the same round, and a bee's close asks for the next
-  // round immediately: during a z.ai quota window (1308/1316, hours long)
-  // three empty attempts - and an escalation no timer releases - took
-  // minutes, and every lane moved one issue a cycle out of the backlog into
-  // needs-you. Half an hour lets a rate limit pass and a quota window be
-  // retried a handful of times, not a hundred.
-  if (verdict === 'empty') {
-    return idleMs >= EMPTY_ATTEMPT_FLOOR_MS ? 'failed' : 'rejected'
-  }
-
-  // THE CONTRACT IT WAS JUDGED AGAINST IS GONE. An issue's criteria are frozen
-  // onto the dispatch row so a bee is judged by what it was told, and that is
-  // right - but when the ISSUE's criteria are rewritten, the verdict on the old
-  // row answers a question nobody is asking any more. Measured 2026-09-19: 126
-  // open issues quoted a compiler a bee does not have and criteria the container
-  // could never satisfy; after they were rewritten, 72 of the 86 rows still
-  // holding their issues had been judged against the old text. Released at
-  // once, with no floor: there is nothing to wait for.
-  if (verdict === 'stale-contract') return 'failed'
-
-  // CLOSED BY THE REVIEW VALVE: the reason is in judged_note, the files are
-  // free, and the round does not take the issue again while the row stands.
-  if (verdict === OBSOLETE_STATE) return 'cancelled'
-  const idleMinutes = Math.floor(idleMs / 60_000)
-
-  if (verdict === 'sendBack') {
-    if (idleMs >= SEND_BACK_IDLE_FLOOR_MS && sendBacks < ceiling)
-      return 'failed'
-    // AT THE CEILING, THE ISSUE STOPS BEING THE SWARM'S - BUT ITS FILES MUST
-    // NOT STAY HELD.
-    //
-    // `rejected` had no clock at all, so an issue that spent its two attempts
-    // pinned its boundary until the dispatch row fell out of the 7-day window.
-    // Measured 2026-09-20, the morning after the adversarial review began
-    // refusing work the compiler cannot build: 71 of the swarm's issues were
-    // claimed, 0 of 8 lanes ran, and the tick refused 673 candidates with
-    // "nothing to choose". Every one of those refusals was honest - the Zig the
-    // bees generated did not compile - and the swarm still had to stop.
-    //
-    // A ceiling is a statement about ATTEMPTS, and the old rule read it as a
-    // lease with no clock: "a person decides, not a timer". That is right the
-    // second time it happens and wrong the first, because the person is asleep
-    // and the swarm is not. So the ceiling is spent ONCE more - after the same
-    // hour a single send-back waits out - and the count of those releases is
-    // itself bounded: past `MAX_CEILING_RELEASES` the row stays `rejected` and
-    // the issue really is a person's.
-    // The review valve (specs/queen/review_valve.t27) decides from here: once
-    // after the ceiling floor, then closed rather than held for a person.
-    return stateOfStep(
-      nextStep(KIND_SEND_BACK_CEILING, idleMinutes, releases),
-      'rejected',
+  lease: ClaimLease = {},
+): DispatchClaim {
+  if (
+    finished &&
+    String(reviewState ?? '') === 'sendBack' &&
+    nobodyComesBack(
+      lease.releaseDeadClaims,
+      lease.sendBacks ?? 0,
+      lease.ceiling ?? DEFAULT_SEND_BACK_CEILING,
     )
-  }
-  // AN ESCALATION HAS A NEXT STEP AND A CLOCK. It used to fall through to
-  // `awaitingReview` - "a timer is not a person" - and measured 2026-10-05 that
-  // was 144 of 219 review cards, each holding its files (fileConflict 108,
-  // 25 of 70 workers active). The owner's rule is that no person is needed, so
-  // specs/queen/review_valve.t27 decides: release, criteria backfill, or close.
-  if (verdict === 'escalate') {
-    const kind = escalationKind(
-      lease.criteria ?? 1,
-      sendBacks >= ceiling,
-      (lease.freeAttempts ?? 0) >= FREE_ATTEMPT_CEILING,
-      (lease.reviewerMisses ?? 0) >= REVIEWER_MISS_CEILING,
-    )
-    return stateOfStep(nextStep(kind, idleMinutes, releases), 'awaitingReview')
-  }
-  // A wait that has outlasted the frozen floor was never judged and never will
-  // be, because nothing about its input can change. (`escalate` is handled
-  // above, by the review valve.)
-  if (verdict === '' || verdict === 'wait') {
-    if (idleMs >= WAIT_FROZEN_FLOOR_MS && sendBacks < ceiling) return 'failed'
-  }
-  return 'awaitingReview'
+  )
+    return 'failed'
+  return claimOf(finished, reviewState, lease)
 }
-
 /**
  * Write down each close the review valve decided this round, and name the
  * issues it closed. The reason goes first in `judged_note`, the note a
@@ -2000,7 +1935,7 @@ export async function runRound(
       !finished &&
       typeof row.key_index === 'number' &&
       isRunnerLane(row.key_index)
-    return boardTask(owner, repoName, {
+    const task = boardTask(owner, repoName, {
       conversationId: row.conversation_id,
       issue: row.issue,
       // holds.t27: finished work lets go of its files after a while, and an
@@ -2051,6 +1986,20 @@ export async function runRound(
       outputTokens:
         row.output_tokens == null ? undefined : Number(row.output_tokens),
     })
+    // A FREED CLAIM HOLDS NO FILES (holds.t27 held_stage, t27#9111, behind
+    // TRIOS_QUEEN_RELEASE_DEAD_CLAIMS). A send-back freed as `failed` kept its
+    // files for SEND_BACK_HOLD_MINUTES, so its own next attempt was refused as
+    // "held by" itself until they ran out. Off: the row is exactly as above.
+    if (!releaseDeadClaimsEnabled()) return task
+    return {
+      ...task,
+      ownedPaths: heldPaths(
+        row,
+        Date.now(),
+        issueNow(issuesNow, row.issue),
+        claimOfState(task.state),
+      ),
+    }
   })
 
   // CLOSED BY THE REVIEW VALVE IS NOT CHOSEN AGAIN. `cancelled` frees the
@@ -3077,8 +3026,11 @@ export interface ReviewRound {
  * because a quota window ends every turn at once and three of them are
  * minutes, not evidence about the issue. Reaped attempts are not counted
  * either, for the same reason: a deploy restart reaps every running bee.
+ *
+ * The number is the claim card's (specs/queen/claim.t27), which reads the
+ * dead letter from it.
  */
-export const FREE_ATTEMPT_CEILING = 3
+export const FREE_ATTEMPT_CEILING = CLAIM_FREE_ATTEMPT_CEILING
 
 /** The note a send-back carries when an adversarial reviewer judged it. */
 function reviewedSendBackMessage(
@@ -4574,8 +4526,11 @@ export function sweepDeadlineMs(intervalSeconds: number): number {
  * Rounds a bought review may fail to arrive for one commit before a person is
  * asked. Three, the same order as `FREE_ATTEMPT_CEILING`: enough for a lane to
  * be backed off and another tried, not enough to hold finished work for hours.
+ *
+ * The number is the claim card's (specs/queen/claim.t27), which reads the
+ * reviewer giving up from it.
  */
-export const REVIEWER_MISS_CEILING = 3
+export const REVIEWER_MISS_CEILING = CLAIM_REVIEWER_MISS_CEILING
 
 /**
  * Whether a finished turn was ended by the provider or the transport rather

@@ -11,7 +11,8 @@
 //
 //   All three issues visibly contain four acceptance criteria. #1216 has an
 //   English `## Success Criteria` section whose last line is a `grep` that must
-//   exit 0; #1240 and #1244 have `## Готово, когда` with four bullets each.
+//   exit 0; #1240 and #1244 have the Russian "done, when" heading with four
+//   bullets each (the Cyrillic heading itself lives in the parser, not here).
 //
 //   The cause was `QueenSpecQuality.criteriaHeadings`, which knew four headings
 //   and none of the ones those issues use. It was fixed the SAME DAY in
@@ -90,19 +91,41 @@ const sh = (c, opts = {}) =>
 const tryShell = (c, opts) => { try { return sh(c, opts) } catch { return null } }
 
 /**
- * Strip railway's own chatter, which is not output of the command we ran.
+ * Railway's own chatter, the lines it prints around the output of the command
+ * we ran. Named, because a pattern nobody can name is a pattern nobody can
+ * test: the selftest pins every entry through chatterOnly below.
  *
- * ANCHORED, and never applied to a line that looks like data. The first version
- * dropped any line CONTAINING `Migrate`, `Existing`, `Using SSH` or
- * `railway.json` - so a single-line JSON answer carrying a review note that
- * mentioned migration was deleted in full, and the caller reported "unparseable
- * answer" about a query that had worked perfectly. A noise filter that can eat
- * evidence is worse than no filter: it turns a working system into an
- * unexplainable one.
+ * The arrow of the Migrate banner is written as an escape - the file is
+ * ASCII-only (L3), and the banner it matches is not.
+ */
+export const CHATTER = [
+  /^Using SSH/,
+  /^warning: Config as Code/,
+  /^\s*\u{2192} Migrate/u,
+  /^\s*Existing files keep working/,
+  /^.*railway\.json \/ railway\.toml/,
+]
+
+/**
+ * Whether one line is PURE chatter. ANCHORED, and never true of a line that
+ * looks like data.
  *
- * Two rules now. A line that begins with `[` or `{` is an answer and is never
- * dropped; anything else must match the chatter from its START to count as
- * chatter.
+ * THE DEFECT THIS SHAPE CAME FROM: the first version dropped any line
+ * CONTAINING `Migrate`, `Existing`, `Using SSH` or `railway.json` - so a
+ * single-line JSON answer carrying a review note that mentioned migration was
+ * deleted in full, and the caller reported "unparseable answer" about a query
+ * that had worked perfectly. A noise filter that can eat evidence is worse
+ * than no filter: it turns a working system into an unexplainable one. The
+ * historical case is planted in the selftest with the fixtures it almost ate.
+ */
+export function chatterOnly(line) {
+  return CHATTER.some((re) => re.test(line))
+}
+
+/**
+ * Two rules, unchanged since the defect above. A line that begins with `[` or
+ * `{` is an answer and is never dropped; anything else must match the chatter
+ * from its START to count as chatter.
  */
 export const clean = (s) =>
   s
@@ -110,7 +133,7 @@ export const clean = (s) =>
     .filter((l) => {
       const t = l.trim()
       if (t.startsWith('[') || t.startsWith('{')) return true
-      return !/^(Using SSH|warning: Config as Code|\s*→ Migrate|\s*Existing files keep working|.*railway\.json \/ railway\.toml)/.test(l)
+      return !chatterOnly(l)
     })
     .join('\n')
     .trim()
@@ -216,7 +239,7 @@ export function criteriaToday(body) {
  * THE NEAR MISS. The first working run of this tool called #1244 stale and
  * would have returned it to the pool. Its recorded reason was the criteria bug,
  * and that reason is indeed void. But the issue body carries a section headed
- * `## Почему жду слова` - "why I am waiting for your word" - explaining that the
+ * The "why I am waiting for your word" heading (Pochemu zhdu slova) - explaining that the
  * change rewrites the main window's tabs and that the bee will not do that
  * silently while the operator sleeps.
  *
@@ -230,10 +253,10 @@ export function criteriaToday(body) {
  * recorded reason says. The two gates must BOTH open.
  */
 const ASKS_FOR_A_PERSON = [
-  'почему жду слова',
-  'жду слова',
-  'ждёт слова',
-  'ждет слова',
+  '\u043f\u043e\u0447\u0435\u043c\u0443 \u0436\u0434\u0443 \u0441\u043b\u043e\u0432\u0430',
+  '\u0436\u0434\u0443 \u0441\u043b\u043e\u0432\u0430',
+  '\u0436\u0434\u0451\u0442 \u0441\u043b\u043e\u0432\u0430',
+  '\u0436\u0434\u0435\u0442 \u0441\u043b\u043e\u0432\u0430',
   'waiting on your word',
   'waiting for your word',
   'needs your decision',
@@ -353,6 +376,13 @@ p.query("update queen_dispatch set review_state='failed', review_note=$1, review
   return { released: m ? Number(m[1]) : 0, raw: out }
 }
 
+/**
+ * The escalations that still stand - kept out of the pool by a live cause or
+ * an unreadable one. Named so the summary states both sides of the count
+ * instead of one.
+ */
+export const nstale = (rows) => rows.filter((r) => r.state !== 'STALE').length
+
 if (isMain) {
   const doRelease = process.argv.includes('--release')
   const { rows, error, build } = survey()
@@ -374,7 +404,7 @@ if (isMain) {
   }
 
   const stale = rows.filter((r) => r.state === 'STALE')
-  console.log(`\n${rows.length} escalation(s): ${stale.length} raised on a cause that no longer holds`)
+  console.log(`\n${rows.length} escalation(s): ${stale.length} raised on a cause that no longer holds, ${nstale(rows)} still standing`)
 
   if (!stale.length) {
     console.log('\nNothing to retire. An escalation whose cause still holds waits for a person,')

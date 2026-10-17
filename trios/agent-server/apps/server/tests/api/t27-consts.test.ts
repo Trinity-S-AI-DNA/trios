@@ -43,18 +43,18 @@ describe('t27-consts', () => {
     it('joins a byte pair stored as two chars into one UTF-8 character', () => {
       // 0xC3 0xA9 is the UTF-8 encoding of e-acute; the wasm hands
       // strings back byte-per-char.
-      expect(decodeBytes('\u00C3\u00A9')).toBe('\u00E9')
+      expect(decodeBytes('Ã©')).toBe('é')
     })
 
     it('keeps text that already has a char above 0xff byte-for-char', () => {
-      const wide = 'a\u0100b' // a + LATIN CAPITAL LETTER A WITH MACRON + b
+      const wide = 'aĀb' // a + LATIN CAPITAL LETTER A WITH MACRON + b
       expect(decodeBytes(wide)).toBe(wide)
     })
 
     it('falls back to the original when the bytes are not valid UTF-8', () => {
       // A lone 0xE9 has no continuation byte: the fatal decoder
       // refuses, and the caller sees the original char.
-      expect(decodeBytes('\u00E9')).toBe('\u00E9')
+      expect(decodeBytes('é')).toBe('é')
     })
   })
 
@@ -139,67 +139,53 @@ describe('t27-consts', () => {
   })
 
   describe('loadCompiler', () => {
-    it(
-      'analyzes a card with the real vendored compiler: consts, typecheck verdict, no discarded tokens',
-      async () => {
-        const wasm = readFileSync(
-          resolve(import.meta.dir, '../../../../specs/t27_compiler.wasm'),
-        )
-        const analyze = await loadCompiler(new Uint8Array(wasm))
-        const a = analyze(
-          'module zz;\npub const KIND : str = "cron";\npub const ID : str = "x/y";\n',
-        )
-        expect(a.typecheckOk).toBe(true)
-        expect(a.errors).toBe(0)
-        expect(a.discarded).toBe(0)
-        expect(a.consts.KIND).toEqual({
-          type: 'str',
-          value: 'cron',
-          pub: true,
-        })
-        expect(a.consts.ID.value).toBe('x/y')
-      },
-      20_000,
-    )
+    it('analyzes a card with the real vendored compiler: consts, typecheck verdict, no discarded tokens', async () => {
+      const wasm = readFileSync(
+        resolve(import.meta.dir, '../../../../specs/t27_compiler.wasm'),
+      )
+      const analyze = await loadCompiler(new Uint8Array(wasm))
+      const a = analyze(
+        'module zz;\npub const KIND : str = "cron";\npub const ID : str = "x/y";\n',
+      )
+      expect(a.typecheckOk).toBe(true)
+      expect(a.errors).toBe(0)
+      expect(a.discarded).toBe(0)
+      expect(a.consts.KIND).toEqual({
+        type: 'str',
+        value: 'cron',
+        pub: true,
+      })
+      expect(a.consts.ID.value).toBe('x/y')
+    }, 20_000)
 
-    it(
-      'counts tokens the compiler drops instead of hiding them',
-      async () => {
-        const wasm = readFileSync(
-          resolve(import.meta.dir, '../../../../specs/t27_compiler.wasm'),
-        )
-        const analyze = await loadCompiler(new Uint8Array(wasm))
-        // Measured on this exact wasm: a stray token line is dropped
-        // and counted, the rest of the card is still analyzed.
-        const a = analyze(
-          'module zz;\npub const ID : str = "a";\n$$$\n',
-        )
-        expect(a.typecheckOk).toBe(true)
-        expect(a.discarded).toBe(3)
-        expect(a.consts.ID.value).toBe('a')
-      },
-      20_000,
-    )
+    it('counts tokens the compiler drops instead of hiding them', async () => {
+      const wasm = readFileSync(
+        resolve(import.meta.dir, '../../../../specs/t27_compiler.wasm'),
+      )
+      const analyze = await loadCompiler(new Uint8Array(wasm))
+      // Measured on this exact wasm: a stray token line is dropped
+      // and counted, the rest of the card is still analyzed.
+      const a = analyze('module zz;\npub const ID : str = "a";\n$$$\n')
+      expect(a.typecheckOk).toBe(true)
+      expect(a.discarded).toBe(3)
+      expect(a.consts.ID.value).toBe('a')
+    }, 20_000)
 
-    it(
-      'drops a valueless declaration silently: no constant, verdict still ok',
-      async () => {
-        const wasm = readFileSync(
-          resolve(import.meta.dir, '../../../../specs/t27_compiler.wasm'),
-        )
-        const analyze = await loadCompiler(new Uint8Array(wasm))
-        // Measured on this exact wasm (the leniency the scheduler's
-        // schema has to refuse on its own): `= ;` yields no constant
-        // and no discarded count, and the typecheck still says ok.
-        const a = analyze(
-          'module zz;\npub const KIND : str = "cron";\npub const ID : str = ;\n',
-        )
-        expect(a.typecheckOk).toBe(true)
-        expect(a.discarded).toBe(0)
-        expect(a.consts.KIND.value).toBe('cron')
-        expect(a.consts.ID).toBeUndefined()
-      },
-      20_000,
-    )
+    it('drops a valueless declaration silently: no constant, verdict still ok', async () => {
+      const wasm = readFileSync(
+        resolve(import.meta.dir, '../../../../specs/t27_compiler.wasm'),
+      )
+      const analyze = await loadCompiler(new Uint8Array(wasm))
+      // Measured on this exact wasm (the leniency the scheduler's
+      // schema has to refuse on its own): `= ;` yields no constant
+      // and no discarded count, and the typecheck still says ok.
+      const a = analyze(
+        'module zz;\npub const KIND : str = "cron";\npub const ID : str = ;\n',
+      )
+      expect(a.typecheckOk).toBe(true)
+      expect(a.discarded).toBe(0)
+      expect(a.consts.KIND.value).toBe('cron')
+      expect(a.consts.ID).toBeUndefined()
+    }, 20_000)
   })
 })

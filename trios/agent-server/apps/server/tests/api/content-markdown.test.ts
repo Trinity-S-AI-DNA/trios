@@ -127,7 +127,7 @@ function runExpression(
     visibility: el.visibility,
   })
   try {
-    // biome-ignore lint/suspicious/noEval: the export's whole job is to emit a script that Runtime.evaluate executes; indirect eval in global scope against a stub DOM runs that exact contract without a browser.
+    // biome-ignore lint/security/noGlobalEval: the export's whole job is to emit a script that Runtime.evaluate executes; indirect eval in global scope against a stub DOM runs that exact contract without a browser.
     return (0, eval)(expression) as string
   } finally {
     names.forEach((name, index) => {
@@ -261,7 +261,9 @@ describe('contentMarkdownContract', () => {
 
     // selector: the walk starts at querySelector's answer, and an empty
     // answer yields an empty document rather than a fall back to body.
-    const scoped = new FakeEl('div', [new FakeEl('p', [txt('Scoped paragraph')])])
+    const scoped = new FakeEl('div', [
+      new FakeEl('p', [txt('Scoped paragraph')]),
+    ])
     const scopedMarkdown = runExpression(
       buildContentMarkdownExpression({ selector: '#main' }),
       scoped,
