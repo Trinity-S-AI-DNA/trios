@@ -321,6 +321,42 @@ export async function importRunnerBranch(
   }
 }
 
+/**
+ * The two facts reviewer.t27 `no_bundle_is_empty` reads about a runner row
+ * whose diff could not be read: whether `queen_bundle` holds a bundle for the
+ * issue, and how many whole minutes ago this attempt finished. Read in one
+ * statement, at the moment of asking, for the attempt the review is judging
+ * (its conversation); null when that attempt is no longer the finished row,
+ * which decides nothing. The minutes use this process's clock against
+ * `finished_at`, as the board's floors do (`dispatchRowState`).
+ */
+export async function runnerBundleFacts(
+  pool: Pick<Pool, 'query'>,
+  issue: number,
+  conversation: string | null,
+  now: number = Date.now(),
+): Promise<{ stored: boolean; minutesSinceFinished: number } | null> {
+  const rows = await pool.query(
+    `SELECT d.finished_at,
+            EXISTS (SELECT 1 FROM queen_bundle b WHERE b.issue = d.issue)
+              AS stored
+       FROM queen_dispatch d
+      WHERE d.issue = $1 AND d.finished_at IS NOT NULL
+        AND ($2::text IS NULL OR d.conversation_id = $2::text)`,
+    [issue, conversation],
+  )
+  const row = rows.rows?.[0]
+  if (!row) return null
+  const at = Date.parse(String(row.finished_at))
+  if (!Number.isFinite(at)) return null
+  return {
+    // Anything but a plain false is a bundle: an unreadable answer must not
+    // make finished work look empty.
+    stored: row.stored !== false,
+    minutesSinceFinished: Math.max(0, Math.floor((now - at) / 60_000)),
+  }
+}
+
 /** The bundle a runner left behind, or null. Never a reason to fail a request. */
 async function storedBundle(
   issue: number,

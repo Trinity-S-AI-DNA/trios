@@ -827,6 +827,15 @@ export interface ReviewDeps {
    * onto live work goes back. Optional for fakes; absent, the verdict stands.
    */
   regionCheck?: (input: RegionCheckInput) => Promise<RegionCheck>
+  /**
+   * Whether a runner stored a bundle for the issue, and the minutes since the
+   * attempt `conversation` finished; null when that is not the finished row.
+   * Asked only with TRIOS_QUEEN_NO_BUNDLE_EMPTY=on. Optional for fakes.
+   */
+  runnerBundleFacts?: (
+    issue: number,
+    conversation: string | null,
+  ) => Promise<{ stored: boolean; minutesSinceFinished: number } | null>
 }
 
 export function defaultReviewDeps(): ReviewDeps {

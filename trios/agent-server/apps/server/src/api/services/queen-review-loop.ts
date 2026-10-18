@@ -64,6 +64,35 @@ export const roundReviews = (reviewerRunning: boolean): boolean =>
 export const dueAgain = (waits: number, sinceVisitMs: number): boolean =>
   card().call('due_again', u32(waits), u32(sinceVisitMs / 1000)) !== 0
 
+/**
+ * A RUNNER ROW WITH NO BUNDLE, PAST THE GRACE, IS AN EMPTY ATTEMPT
+ * (no_bundle_is_empty, gHashTag/t27#9069). Measured 07:10-09:43Z on
+ * 2026-10-11: 425 of 480 reviewer visits answered `wait` because the diff of
+ * queen-N could not be read. A runner stores a bundle only for a bee that
+ * committed something, so a bee that committed nothing left no branch here
+ * and its row waited for the six-hour frozen-wait valve with its issue
+ * claimed; a container bee that commits nothing is `empty` at once. The card
+ * waits NO_BUNDLE_GRACE_MINUTES first, because the bundle is stored after the
+ * turn ends (15 arrived late in that window, the latest 58 s after the first
+ * visit).
+ */
+export const noBundleIsEmpty = (
+  onRunner: boolean,
+  bundleStored: boolean,
+  minutesSinceFinished: number,
+): boolean =>
+  card().call(
+    'no_bundle_is_empty',
+    flag(onRunner),
+    flag(bundleStored),
+    u32(minutesSinceFinished),
+  ) !== 0
+
+/** TRIOS_QUEEN_NO_BUNDLE_EMPTY=on: the review asks `noBundleIsEmpty`. Off by default. */
+export const noBundleEmptyEnabled = (
+  env: Record<string, string | undefined> = process.env,
+): boolean => (env.TRIOS_QUEEN_NO_BUNDLE_EMPTY ?? '').trim() === 'on'
+
 let running = false
 
 /**
