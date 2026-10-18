@@ -2073,7 +2073,7 @@ export async function runRound(
     candidateBodies,
     tasks: openingBoard,
   })
-  // The rule, not capacity, is why nothing starts: the tick says so.
+  // answer is true unless queend refused for capacity: then the rule says why.
   if (reviewFirst && !choice.chosen && swiftCapacityAnswer(choice).answer)
     choice.refusal = reviewFirst
   // TRIOS_QUEEN_DISPATCH_BATCH=on (t27#9021): one chooser call fills every
