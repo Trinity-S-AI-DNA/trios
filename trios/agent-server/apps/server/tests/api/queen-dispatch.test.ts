@@ -2158,41 +2158,14 @@ describe('classifying a quota stop at the dispatch boundary', () => {
   })
 
   it('classifies every documented quota code, and only those', () => {
-    const quotaCodes = [
-      '1113', // Insufficient balance or no resource package.
-      '1308', // Usage limit reached for a window.
-      '1309', // GLM Coding Plan package expired.
-      '1310', // Weekly/Monthly limit exhausted.
-      '1311', // Plan does not include the model.
-      '1313', // Fair Usage Policy.
-      '1314', // Enterprise package expired.
-      '1315', // Key limited to enterprise coding package.
-      '1316', // 5-hour limit, no balance for extra usage.
-      '1317', // 7-day limit, no balance for extra usage.
-      '1318', // 5-hour limit, monthly spend limit.
-      '1319', // 7-day limit, monthly spend limit.
-      '1320', // 5-hour limit, monthly spend limit.
-      '1321', // 7-day limit, monthly spend limit.
+    const quota = [
+      1113, 1308, 1309, 1310, 1311, 1313, 1314, 1315, 1316, 1317, 1318, 1319,
+      1320, 1321,
     ]
-    for (const code of quotaCodes) {
+    for (const code of [...quota, 1000, 1211, 1220, 1301, 1302, 1305]) {
       expect(classifyQuotaExhaustion('zai', `[${code}] stopped`)).toBe(
-        `provider quota exhausted (zai code ${code})`,
+        quota.includes(code) ? `provider quota exhausted (zai code ${code})` : null,
       )
-    }
-    // The transient 429s clear on their own. Closing a bee as quota-stopped
-    // over either would retire work another retry could have finished.
-    expect(
-      classifyQuotaExhaustion('zai', '[1302] Rate limit reached'),
-    ).toBeNull()
-    expect(
-      classifyQuotaExhaustion(
-        'zai',
-        '[1305] The service may be temporarily overloaded',
-      ),
-    ).toBeNull()
-    // Documented codes outside the quota family are not quota stops either.
-    for (const code of ['1000', '1211', '1220', '1301']) {
-      expect(classifyQuotaExhaustion('zai', `[${code}] other`)).toBeNull()
     }
   })
 

@@ -7,7 +7,10 @@ import {
 } from 'node:crypto'
 import type { Pool } from 'pg'
 import { logger } from '../../lib/logger'
+import { loadCardWasm, u32 } from './queen-card-wasm'
 import { CONTRIBUTOR_POLICY as P } from './queen-contributor-policy'
+import * as KF from './queen-key-failover-card.gen'
+import { RUNNER_KEY_BASE } from './queen-runners'
 
 export type ContributorProvider = 'nvidia' | 'zai'
 export type ProbeStatus =
@@ -1033,4 +1036,28 @@ export async function contributorOwnerNames(
     'SELECT key_index,owner_name FROM queen_contributor_keys',
   )
   return Object.fromEntries(rows.map((row) => [row.key_index, row.owner_name]))
+}
+
+// #9998: keys a refusal rests (key_failover card), read from the closed rows.
+export const failover = () => loadCardWasm('queen/key_failover.wasm')
+export const keyFailoverOn = () =>
+  process.env.TRIOS_QUEEN_KEY_FAILOVER === 'on'
+export async function restingKeys(db: Pool): Promise<number[]> {
+  if (!keyFailoverOn()) return []
+  const { rows } = await db.query(
+    `SELECT key_index k, bool_or(outcome LIKE 'provider quota%') q,
+            (count(*) - 1)::int s,
+            min(EXTRACT(EPOCH FROM now() - finished_at))::int a
+       FROM queen_dispatch
+      WHERE outcome ~ '^provider (overloaded|quota)' AND key_index <= $2
+        AND finished_at > now() - $1 * interval '1 second'
+      GROUP BY key_index`,
+    [KF.KEY_BREAK_SECONDS, RUNNER_KEY_BASE],
+  )
+  return rows
+    .filter((r) => {
+      const kind = r.q ? KF.KE_QUOTA : KF.KE_TRANSIENT
+      return r.a < failover().call('cooldown_seconds', kind, u32(r.s))
+    })
+    .map((r) => r.k)
 }
