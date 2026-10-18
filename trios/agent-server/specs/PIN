@@ -127,3 +127,6 @@ claim card: gHashTag/t27 specs/queen/claim.t27 (t27#8765, PR t27#8768 head d4ced
 claim: queen/claim.t27 sha256 f031594c8c0c5078a126ad4ed3ec0e3ef6b1179658572878fa24361c4b17cec9
 claim: queen/review_valve.t27 sha256 5177806d264aa3611b5187a89b929c2231cbf7f95eb3cb78d246d913b658d8a6
 claim: queen/claim.wasm sha256 08fc2b32d46742638c00d20fe1e64dd81289080dcfc8fa662972acc411d4884a
+review_first card: gHashTag/t27 specs/queen/review_first.t27 (t27#10555, PR t27#10562), byte-identical; review_first.wasm = t27c gen-c + zig 0.16.0 cc --target=wasm32-wasi -Oz -DNDEBUG -mexec-model=reactor, exports every fn of the card: kind_of,in_review_queue,backlog_open,admission,admits,round_refused (reproducible: two builds, one hash); constants: t27c gen-ts > apps/server/src/api/services/queen-review-first-card.gen.ts
+review_first: queen/review_first.t27 sha256 c0ec4028feccb9740ddd434f8a1ee8f4fce9b7a4ce2dd1664de504a0b5d06e88
+review_first: queen/review_first.wasm sha256 6c9fbeca0bc9dc98122ee4dcc8cdf1ad0c37c659625422828281309875555f2f
