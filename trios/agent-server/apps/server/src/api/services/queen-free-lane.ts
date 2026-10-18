@@ -21,7 +21,9 @@
 
 import type { Pool } from 'pg'
 import type { AppLlm } from './queen-app'
+import { loadCardWasm } from './queen-card-wasm'
 import { reviewLaneCandidates, type WorkerProvider } from './queen-dispatch'
+import * as KV from './queen-key-vault-card.gen'
 import {
   chooseReviewerLane,
   defaultReviewerLlm,
@@ -71,4 +73,42 @@ export function freeLaneLlm(
     }
     return { ok: false, error: last, transient: true }
   }
+}
+
+/** Lease decisions are key_vault.t27's; `leased` is the z.ai keys out now. */
+export const vault = (fn: string, ...args: number[]) =>
+  loadCardWasm('queen/key_vault.wasm').call(fn, ...args)
+export const leased = new Map<string, symbol>()
+
+/** One leased request: a lane makes it, a refused lane hands it on. */
+export async function zaiLeaseCall(
+  lanes: WorkerProvider[],
+  path: string,
+  init: RequestInit & { headers: Record<string, string> },
+) {
+  let last: Response | null = null
+  for (const [i, lane] of lanes.slice(0, KV.LEASE_TRIES).entries()) {
+    const key = reviewerLaneKey(lane)
+    const id = Symbol()
+    const free = () => leased.get(key) === id && leased.delete(key)
+    leased.set(key, id)
+    setTimeout(free, KV.LEASE_SECONDS * 1000)
+    const res = await fetch(`https://api.z.ai/api/anthropic${path}`, {
+      ...init,
+      headers: { ...init.headers, authorization: `Bearer ${lane.apiKey}` },
+      signal: AbortSignal.timeout(KV.LEASE_SECONDS * 1000),
+    }).catch(() => null)
+    const headers = { 'content-type': res?.headers.get('content-type') ?? '' }
+    if (res?.ok && res.body) {
+      const done = new TransformStream({ flush: () => void free() })
+      return new Response(res.body.pipeThrough(done), { headers })
+    }
+    free()
+    const text = (await res?.text().catch(() => '')) ?? ''
+    const code = Number(/"code"\s*:\s*"?(\d+)/.exec(text)?.[1] ?? 0)
+    last = res && new Response(text, { status: res.status, headers })
+    if (vault('lease_step', res?.status ?? 0, code, i + 1) === KV.LS_ANSWER)
+      break
+  }
+  return last
 }
