@@ -15,16 +15,20 @@
  * transport they have. One lease, one name, two kinds of client.
  */
 
+import { createHash, timingSafeEqual } from 'node:crypto'
 import { Hono } from 'hono'
 import type { Pool } from 'pg'
 import { createQueenPool } from '../../lib/db/queen-pool'
+import { leased, vault, zaiLeaseCall } from '../services/queen-free-lane'
+import * as KV from '../services/queen-key-vault-card.gen'
 import {
   acquireQueenLease,
   queenLeaseDatabaseUrl,
   queenLeaseStatus,
   releaseQueenLease,
 } from '../services/queen-lease'
-import { runQueenTickOnce } from '../services/queen-tick'
+import { zaiLeaseLanes } from '../services/queen-reviewer'
+import { runningKeys, runQueenTickOnce } from '../services/queen-tick'
 
 const LEASE_NAME = 'queen-tick'
 
@@ -173,4 +177,39 @@ export function createQueenLeaseRoute() {
         }
       })
   )
+}
+
+/** What a lease forwards of the caller's request: never its token. */
+const ZAI_HEADERS = {
+  'content-type': 'application/json',
+  'anthropic-version': '2023-06-01',
+}
+/** The Mac reviewer's z.ai calls, made here so no key leaves the Queen. */
+export function createQueenZaiLeaseRoute() {
+  return new Hono().all('/*', async (c) => {
+    const token = process.env.TRIOS_QUEEN_REVIEW_LEASE_TOKEN ?? ''
+    const sha = (s: string) => createHash('sha256').update(s).digest()
+    if (token.length < 32) return c.json({ error: 'lease_off' }, 503)
+    const given = sha(c.req.header('authorization') ?? '')
+    if (!timingSafeEqual(given, sha(`Bearer ${token}`)))
+      return c.json({ error: 'forbidden' }, 403)
+    const url = queenLeaseDatabaseUrl()
+    const taken = url ? await runningKeys(poolForTick(url)) : []
+    const lanes = zaiLeaseLanes(taken, leased)
+    const total = zaiLeaseLanes([], leased).length + leased.size
+    const n = leased.size
+    const ask = [KV.LEASE_REVIEW, KV.SRC_STORE, n, lanes.length, total, n, 1]
+    const answer = vault('lease_answer', ...ask)
+    const path = c.req.url.replace(/^.*?\/zai-lease/, '')
+    const body = c.req.method === 'GET' ? undefined : await c.req.arrayBuffer()
+    const init = { method: c.req.method, headers: ZAI_HEADERS, body }
+    const res =
+      answer === KV.LA_GRANT && (await zaiLeaseCall(lanes, path, init))
+    if (res) return res
+    const refused = answer === KV.LA_REFUSE
+    const wait = vault('retry_after_seconds', refused ? answer : KV.LA_WAIT)
+    c.header('retry-after', String(wait))
+    const error = { type: 'rate_limit_error', message: 'no z.ai lane free' }
+    return c.json({ type: 'error', error }, refused ? 403 : 429)
+  })
 }

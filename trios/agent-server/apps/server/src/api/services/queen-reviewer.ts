@@ -356,6 +356,16 @@ export function reviewerLaneBackedOff(
   return true
 }
 
+/** z.ai review lanes no bee, backoff or lease holds (key_vault.t27). */
+export const zaiLeaseLanes = (taken: number[], busy: Map<string, symbol>) =>
+  reviewLaneCandidates(taken).filter(
+    (lane) =>
+      !!lane.apiKey &&
+      !!lane.baseUrl?.includes('api.z.ai') &&
+      !reviewerLaneBackedOff(lane) &&
+      !busy.has(reviewerLaneKey(lane)),
+  )
+
 /** For suites: every lane is trusted again. */
 export function forgetReviewerLaneFailures(): void {
   failedLanes.clear()

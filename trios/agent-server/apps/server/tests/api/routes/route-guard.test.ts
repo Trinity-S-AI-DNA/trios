@@ -57,6 +57,8 @@ const report = auditServer(source, DEFAULT_ALLOWLIST)
 // RE-MEASURED 2026-10-11, queen merged into vault-mvp (trios#1759): both
 // joined, so the list is fourteen, recomputed with --no-allowlist on the
 // merged server.ts.
+// RE-MEASURED 2026-10-19: /queen/zai-lease joined (key_vault.t27), so fifteen.
+// The Mac reviewer calls it with no Origin; its guard is its own lease token.
 const EXPECTED_UNGUARDED_WITHOUT_ALLOWLIST = [
   '/api/inngest',
   '/hosting',
@@ -71,6 +73,7 @@ const EXPECTED_UNGUARDED_WITHOUT_ALLOWLIST = [
   '/queen/roadmap',
   '/queen/runner',
   '/queen/tree',
+  '/queen/zai-lease',
   '/vault',
 ]
 
@@ -199,7 +202,9 @@ describe('route-guard audit over src/api/server.ts', () => {
     // tools/route-guard-audit.mjs, not copied. 66: /vault, /hosting and
     // /queen/public-net-credits together; 18 prefix guards, 20 guarded
     // sub-apps, 18 public-read.
-    expect(report.totalMounts).toBe(66)
+    // RE-MEASURED 2026-10-19, the key vault lease (key_vault.t27): 66 became 67
+    // with /queen/zai-lease, allowlisted with its own-token reason.
+    expect(report.totalMounts).toBe(67)
     expect(report.prefixGuardCount).toBe(18)
     expect(report.guardedSubAppCount).toBe(20)
     expect(report.publicReadCount).toBe(18)
@@ -212,7 +217,7 @@ describe('route-guard audit over src/api/server.ts', () => {
     expect(report.entriesMissingReason).toEqual([])
   })
 
-  it('reports exactly the fourteen reasoned exceptions when the allowlist is dropped', () => {
+  it('reports exactly the fifteen reasoned exceptions when the allowlist is dropped', () => {
     // The classifier reports mounts in file order; the assertion is on the
     // exact set, so both sides are sorted before comparing.
     expect([...unguardedMounts(source, [])].sort()).toEqual(
@@ -289,7 +294,9 @@ describe('route-guard audit over src/api/server.ts', () => {
     // RE-MEASURED 2026-10-10, queen merged in: still forty, recomputed.
     // RE-MEASURED 2026-10-10, the network job: forty became forty-one. The
     // eighteenth public-read is /queen/public-net-credits.
-    expect(queenMounts.length).toBe(41)
+    // RE-MEASURED 2026-10-19: forty-one became forty-two. The eleventh
+    // allowlisted mount is /queen/zai-lease, behind its own lease token.
+    expect(queenMounts.length).toBe(42)
 
     const counts: Record<string, number> = {
       'public-read': 0,
@@ -306,7 +313,7 @@ describe('route-guard audit over src/api/server.ts', () => {
       'public-read': 18,
       'prefix-guard': 0,
       wrapper: 13,
-      unguarded: 10,
+      unguarded: 11,
     })
 
     // Every unguarded /queen mount must be one of the allowlisted shells.

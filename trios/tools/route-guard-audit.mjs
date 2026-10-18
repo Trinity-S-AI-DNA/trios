@@ -121,6 +121,11 @@ export const DEFAULT_ALLOWLIST = [
       'own capability - a server-to-server route for the app render proxy, with no browser Origin; every request is refused unless its bearer equals QUEEN_CONTRIBUTOR_PROXY_TOKEN (at least 32 bytes, compared with timingSafeEqual) and it carries a verified x-queen-contributor-id, and the route is off while that token is unset (src/api/routes/queen-contributor-keys.ts, tests/api/queen-contributor-keys.test.ts)',
   },
   {
+    path: '/queen/zai-lease',
+    reason:
+      'own capability - the Mac reviewer\'s z.ai lease (specs/queen/key_vault.t27), called by a bee process with no browser Origin; every request is refused unless its bearer equals TRIOS_QUEEN_REVIEW_LEASE_TOKEN (at least 32 bytes, sha256 digests compared with timingSafeEqual), the route answers 503 while that token is unset, and it forwards a model request on a Queen key without ever returning a key (src/api/routes/queen-lease.ts)',
+  },
+  {
     path: '/vault',
     reason:
       'signed requests - the vault (gHashTag/trios#1759) is called by workloads and the owner\'s CLI, never a browser; every request is refused unless it carries an Ed25519 signature over its method, path, time, nonce and body hash by a key the owner granted, fresh within host.t27 REQUEST_SKEW_SECONDS and with a nonce not seen before (specs/vault/policy.t27 request_code, checked before the body is parsed), and the route answers 503 to everything unless TRIOS_VAULT=on (src/api/routes/vault.ts, tests/api/vault.test.ts)',
