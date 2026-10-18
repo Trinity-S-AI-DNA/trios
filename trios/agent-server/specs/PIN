@@ -127,3 +127,6 @@ claim card: gHashTag/t27 specs/queen/claim.t27 (t27#8765, PR t27#8768 head d4ced
 claim: queen/claim.t27 sha256 f031594c8c0c5078a126ad4ed3ec0e3ef6b1179658572878fa24361c4b17cec9
 claim: queen/review_valve.t27 sha256 5177806d264aa3611b5187a89b929c2231cbf7f95eb3cb78d246d913b658d8a6
 claim: queen/claim.wasm sha256 08fc2b32d46742638c00d20fe1e64dd81289080dcfc8fa662972acc411d4884a
+key_failover card: gHashTag/t27 specs/queen/key_failover.t27 (t27#9998, Closes t27#9993; wired by t27#10403), byte-identical; key_failover.wasm = t27c gen-c + zig 0.16.0 cc --target=wasm32-wasi -Oz -DNDEBUG -mexec-model=reactor, exports every fn of the card: is_quota_code,error_kind,cooldown_seconds,key_closes,bit,is_set,next_free,pool_overloaded,step,charges_issue (reproducible: two builds, one hash); constants: t27c gen-ts > apps/server/src/api/services/queen-key-failover-card.gen.ts
+key_failover: queen/key_failover.t27 sha256 822367357fc6b487c1c7fb7ac8369165e6a7e6636fd9b0dcafec29e9a6274301
+key_failover: queen/key_failover.wasm sha256 aa4fdd776ccf74ecff59cee1c5284db16ead03e477afd9988409920afa0b6b4f

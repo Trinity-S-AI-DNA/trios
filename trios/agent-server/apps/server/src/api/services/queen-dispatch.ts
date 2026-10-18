@@ -29,10 +29,14 @@ import { statSync } from 'node:fs'
 import type { Pool } from 'pg'
 import { logger } from '../../lib/logger'
 import { shellArgv } from '../../tools/filesystem/bash'
+import { u32 } from './queen-card-wasm'
 import {
   type ContributorRuntime,
   contributorRuntime,
   type EnvironmentKey,
+  failover,
+  keyFailoverOn,
+  restingKeys,
 } from './queen-contributor-keys'
 import {
   claimTaskLease,
@@ -48,6 +52,7 @@ import {
   TIP_SENT_BACK,
 } from './queen-control-rules'
 import { domainOfTask } from './queen-domains'
+import * as KF from './queen-key-failover-card.gen'
 import { queenActorHolderPrefix, queenHolderName } from './queen-lease'
 import {
   describeReading,
@@ -132,6 +137,8 @@ export const DISPATCH_OUTCOME_LABELS = {
    * 1308)`. The response body itself stays off the row.
    */
   providerQuotaExhausted: 'provider quota exhausted',
+  /** Base of the key_failover ending (#9998): `(zai code N)` or `(http N)`. */
+  providerOverloaded: 'provider overloaded',
   /**
    * Base of the boot reaper's ending; the writer appends the explanation.
    * Must keep the `reaped` prefix - queen-tick and queen-kanban match on it.
@@ -4171,40 +4178,9 @@ class Scribe {
   }
 }
 
-/**
- * #1301. Z.ai business codes whose documented meaning is that a quota
- * window, a plan, or a balance is spent (docs.z.ai, "Errors": every one of
- * them arrives as HTTP 429).
- *
- * Coding Plan removed the synthetic USD start gate (#1300), which makes these
- * responses the authoritative stop signal: a bee that hits one cannot be
- * helped by another retry until the provider resets the window or the
- * operator pays. A generic worker failure hides that distinction, so the
- * dispatch boundary keeps it as a closed list.
- *
- * The transient 429s are deliberately NOT here. 1302 is a request-rate limit
- * and 1305 a temporary overload; both clear on their own, and closing a bee
- * as quota-stopped over either would retire work another retry could have
- * finished. `1113` is also matched at the transport
- * (lib/provider-error-classifier.ts) to stop SDK retries; this list is about
- * the ending, not the retry.
- */
-const ZAI_QUOTA_EXHAUSTED_CODES: ReadonlySet<string> = new Set([
-  '1113', // Insufficient balance or no resource package. Please recharge.
-  '1308', // Usage limit reached for a window; resets at a stated time.
-  '1309', // GLM Coding Plan package expired.
-  '1310', // Weekly/monthly limit exhausted.
-  '1311', // Subscription plan does not include the model.
-  '1313', // Fair Usage Policy limit on the account.
-  '1314', // Enterprise package expired.
-  '1315', // Key limited to enterprise coding package scenarios.
-  '1316', // 5-hour usage limit; no balance for extra usage.
-  '1317', // 7-day usage limit; no balance for extra usage.
-  '1318', // 5-hour usage limit; monthly spend limit reached.
-  '1319', // 7-day usage limit; monthly spend limit reached.
-  '1320', // 5-hour usage limit; monthly spend limit reached.
-  '1321', // 7-day usage limit; monthly spend limit reached.
-])
+// #1301. The closed list of Z.ai quota codes (1113, 1308-1321 except 1312) is
+// `is_quota_code` in specs/queen/key_failover.t27 (#9998); 1302 and 1305 are
+// transient and not on it.
 
 /**
  * The one ending a quota-stopped bee closes with (#1301).
@@ -4224,13 +4200,25 @@ export function classifyQuotaExhaustion(
   // the Coding Plan window this classification names belongs to Z.ai alone.
   if (provider !== 'zai') return null
   for (const code of zaiCodesIn(errorText)) {
-    if (ZAI_QUOTA_EXHAUSTED_CODES.has(code)) {
+    if (failover().call('is_quota_code', u32(Number(code))) !== 0) {
       // The label base is enumerated with every other outcome (#1360); the
       // code is the one closed parameter it may carry.
       return `${DISPATCH_OUTCOME_LABELS.providerQuotaExhausted} (zai code ${code})`
     }
   }
   return null
+}
+
+/** #9998: a refused key (429, 5xx, Z.ai 1302/1305) closes as an overload. */
+export function classifyOverload(provider: string, text: string) {
+  const status = Number(/HTTP (\d{3})/.exec(text)?.[1] ?? 0)
+  const code = Number((provider === 'zai' && zaiCodesIn(text)[0]) || 0)
+  const zai = code === KF.ZAI_OVERLOAD || code === KF.ZAI_RATE_LIMIT
+  if (!keyFailoverOn() || !(status || zai)) return null
+  const kind = failover().call('error_kind', u32(status), u32(code))
+  if (kind !== KF.KE_TRANSIENT) return null
+  const why = zai ? `zai code ${code}` : `http ${status}`
+  return `${DISPATCH_OUTCOME_LABELS.providerOverloaded} (${why})`
 }
 
 /**
@@ -4339,7 +4327,8 @@ export async function drain(
     scribe.streamError !== undefined
   ) {
     const quota = classifyQuotaExhaustion(provider, scribe.streamError)
-    if (quota !== null) outcome = quota
+    const rested = classifyOverload(provider, scribe.streamError)
+    outcome = quota ?? rested ?? outcome
   }
   // #1360. A stream that closed without ever signalling completion ended in a
   // way nobody measured: something - a tool event, a truncation, anything -
@@ -4975,7 +4964,15 @@ export async function dispatchBee(
   }
 
   const runtime = await contributorRuntime(pool, environmentContributorKeys())
-  const chosen = resolveWorkerProvider(takenKeyIndices, afterKeyIndex, runtime)
+  // #9998: a resting key counts as full, so the bee takes the next key.
+  const resting = (await restingKeys(pool)).flatMap((key) =>
+    Array<number>(KF.POOL_MAX).fill(key),
+  )
+  const chosen = resolveWorkerProvider(
+    [...takenKeyIndices, ...resting],
+    afterKeyIndex,
+    runtime,
+  )
   if (chosen?.exhausted !== undefined) {
     // Not a missing credential: every key this deployment has is already
     // carrying a bee. Named separately because the fix is different - one more

@@ -78,7 +78,10 @@ export interface RoundHandoff {
  */
 export function beeEndOfRow(outcome: string | null): BeeEnd {
   const o = outcome ?? ''
-  const provider = o.startsWith(DISPATCH_OUTCOME_LABELS.providerQuotaExhausted)
+  const provider = [
+    DISPATCH_OUTCOME_LABELS.providerQuotaExhausted,
+    DISPATCH_OUTCOME_LABELS.providerOverloaded,
+  ].some((p) => o.startsWith(p))
   const reaped = outcome === null || o.startsWith('reaped')
   return {
     completion: o === DISPATCH_OUTCOME_LABELS.finished,
