@@ -50,6 +50,7 @@ import {
   dispatchByActors,
   handRoundToBeeActors,
 } from './queen-bee-actors-round'
+import { flag, loadCardWasm, u32 } from './queen-card-wasm'
 import { githubCiDeps, takeBackRefusedAcceptances } from './queen-ci-verdict'
 import { type ClaimLease, claimOf, type DispatchClaim } from './queen-claim'
 import {
@@ -141,6 +142,7 @@ import {
   type ReviewCapacity,
   startReviewerActors,
 } from './queen-review-actors'
+import * as RF from './queen-review-first-card.gen'
 import type { LaneGate } from './queen-review-lanes'
 import { LANE_GO, LANE_STOPPED } from './queen-review-lanes-card.gen'
 import {
@@ -2026,6 +2028,39 @@ export async function runRound(
   const assigned = await pendingAssigns(pool).catch(() => [] as number[])
   if (assigned.length > 0) candidates = manualFirst(candidates, assigned)
 
+  // REVIEW FIRST (review_first.t27, t27#10555, TRIOS_QUEEN_REVIEW_FIRST=on): no
+  // backlog issue starts while finished work waits in review; send-backs and
+  // assignments still do. The queue is the sweep's own filter. Off: as above.
+  let reviewFirst: string | null = null
+  if ((process.env.TRIOS_QUEEN_REVIEW_FIRST ?? '').trim() === 'on') {
+    const rf = loadCardWasm('queen/review_first.wasm')
+    const done = await pool.query(
+      `SELECT issue, review_state, (outcome NOT LIKE 'reaped%') IS TRUE AS kept
+         FROM queen_dispatch WHERE started = true AND finished_at IS NOT NULL`,
+    )
+    const rs = (s: unknown) =>
+      s == null ? RF.RS_NONE : s === 'wait' ? RF.RS_WAIT : RF.RS_OTHER
+    const open = (n: unknown) => flag(issuesNow?.has(Number(n)) ?? true)
+    const queue = done.rows.filter((r) => {
+      const row = [1, 1, rs(r.review_state), flag(!r.kept), open(r.issue)]
+      return rf.call('in_review_queue', ...row) !== 0
+    }).length
+    const sentBack = new Set(
+      inFlight.rows
+        .filter((r) => r.review_state === 'sendBack')
+        .map((r) => Number(r.issue)),
+    )
+    const kind = (n: number) =>
+      rf.call('kind_of', flag(assigned.includes(n)), flag(sentBack.has(n)))
+    const before = candidates.length
+    candidates = candidates.filter(
+      (n) => rf.call('admits', kind(n), u32(queue)) !== 0,
+    )
+    const held = u32(before - candidates.length)
+    if (rf.call('round_refused', u32(candidates.length), held) !== 0)
+      reviewFirst = `${queue}${RF.REFUSAL_TAIL}`
+  }
+
   // Named, because RING-00 is asked about this exact array a few lines below
   // and "the same number" has to be the same number, not a second reading of
   // the same idea.
@@ -2038,6 +2073,9 @@ export async function runRound(
     candidateBodies,
     tasks: openingBoard,
   })
+  // The rule, not capacity, is why nothing starts: the tick says so.
+  if (reviewFirst && !choice.chosen && swiftCapacityAnswer(choice).answer)
+    choice.refusal = reviewFirst
   // TRIOS_QUEEN_DISPATCH_BATCH=on (t27#9021): one chooser call fills every
   // free lane with edits that meet no other (queen-batch-choose.ts); off, the
   // round asks queend again after every pick, as before.
