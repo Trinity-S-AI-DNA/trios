@@ -6,7 +6,7 @@
 export const KIND = "automation" satisfies string;
 export const ID = "queen-contributor-keys" satisfies string;
 export const REPO = "BrowserOS" satisfies string;
-export const VERSION = 2 satisfies number;
+export const VERSION = 3 satisfies number;
 export const PROBE_TIMEOUT_MS = 90000 satisfies number;
 export const PROBE_MAX_TOKENS = 16 satisfies number;
 export const MAX_PROBES_IN_FLIGHT = 4 satisfies number;
@@ -28,6 +28,11 @@ export const MODEL_PROBE_MAX_TOKENS = 512 satisfies number;
 export const MODEL_CHECK_ATTEMPTS = 2 satisfies number;
 export const MODEL_LIST_LIMIT = 500 satisfies number;
 export const MODEL_LIST_CACHE_SECONDS = 600 satisfies number;
+export const ZAI_ANTHROPIC_URL = "https://api.z.ai/api/anthropic" satisfies string;
+export const PROXY_BODY_MAX_BYTES = 4259840 satisfies number;
+export const PROXY_TIMEOUT_MS = 600000 satisfies number;
+export const PROXY_UPSTREAM_HEADER = "x-hive-upstream-status" satisfies string;
+export const PROXY_FLAG_ENV = "TRIOS_KEY_PROXY" satisfies string;
 // t27c gen-ts: fn trusted_proxy was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn source_matches_index was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn may_add_key was not emitted -- this backend lowers declarations, not bodies.
@@ -39,7 +44,13 @@ export const MODEL_LIST_CACHE_SECONDS = 600 satisfies number;
 // t27c gen-ts: fn model_fits was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn may_switch_model was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn may_try_model_check was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn proxy_may_open was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn proxy_flag_on was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn proxy_cap_fits was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn wallet_credit was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
+// t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
 // t27c gen-ts: a TestBlock was not emitted -- it is checked by the compiler, not by the artifact.
@@ -56,7 +67,7 @@ export const MODEL_LIST_CACHE_SECONDS = 600 satisfies number;
 
 // Declaration order, which the spec's own laws depend on.
 export const __STRUCT_ORDER__ = [] as const;
-export const __DECL_ORDER__ = ["KIND", "ID", "REPO", "VERSION", "PROBE_TIMEOUT_MS", "PROBE_MAX_TOKENS", "MAX_PROBES_IN_FLIGHT", "PROBE_COOLDOWN_SECONDS", "MAX_KEYS_PER_OWNER", "MAX_KEY_BYTES", "MAX_BODY_BYTES", "LABEL_LIMIT", "PROXY_TOKEN_MIN_BYTES", "OWNER_REASSIGNMENT", "CREDIT_WALLET", "ENVIRONMENT_INDICES_COMPACTED", "NVIDIA_URL", "NVIDIA_MODEL", "ZAI_URL", "ZAI_MODEL", "MODEL_LIMIT", "MODEL_PROBE_MAX_TOKENS", "MODEL_CHECK_ATTEMPTS", "MODEL_LIST_LIMIT", "MODEL_LIST_CACHE_SECONDS"] as const;
+export const __DECL_ORDER__ = ["KIND", "ID", "REPO", "VERSION", "PROBE_TIMEOUT_MS", "PROBE_MAX_TOKENS", "MAX_PROBES_IN_FLIGHT", "PROBE_COOLDOWN_SECONDS", "MAX_KEYS_PER_OWNER", "MAX_KEY_BYTES", "MAX_BODY_BYTES", "LABEL_LIMIT", "PROXY_TOKEN_MIN_BYTES", "OWNER_REASSIGNMENT", "CREDIT_WALLET", "ENVIRONMENT_INDICES_COMPACTED", "NVIDIA_URL", "NVIDIA_MODEL", "ZAI_URL", "ZAI_MODEL", "MODEL_LIMIT", "MODEL_PROBE_MAX_TOKENS", "MODEL_CHECK_ATTEMPTS", "MODEL_LIST_LIMIT", "MODEL_LIST_CACHE_SECONDS", "ZAI_ANTHROPIC_URL", "PROXY_BODY_MAX_BYTES", "PROXY_TIMEOUT_MS", "PROXY_UPSTREAM_HEADER", "PROXY_FLAG_ENV"] as const;
 
 // What this spec holds and this backend did not print. Empty is the whole
 // story most of the time; an entry here is a promise the artifact does not

@@ -74,6 +74,36 @@ verified contributor header. Responses use `Cache-Control: no-store`.
   minutes) and the model the owner's keys of that provider run now.
 - `POST /queen/contributor-keys/model`: `{provider, model}` sets one model for
   every key the owner holds of that provider and returns the account.
+- `GET /queen/contributor-keys/proxy/keys`: the owner's keys as
+  `{id, provider, model, enabled}` and nothing else. Off unless
+  `TRIOS_KEY_PROXY=on` (503 `proxy_disabled`).
+- `POST /queen/contributor-keys/proxy/:id/messages`: one Anthropic Messages
+  call on the owner's own key `:id`; see the next section.
+
+## Spending a key for one call
+
+`POST /queen/contributor-keys/proxy/:id/messages` is the door behind
+`POST /api/hive/proxy/v1/messages` on the render
+(gHashTag/999-multibots-telegraf#4024; spec `hive-proxy.t27` there,
+`queen-contributor-keys.t27` v3 here). The render judges the person's
+session and picks the key id; the Queen checks only what she alone can: the
+key is the attested subject's own, it is enabled, and its provider has an
+Anthropic endpoint (today `zai`; an `nvidia` key answers 404
+`provider_needs_translation`). Another owner's key, a disabled key and an
+unknown id all answer 404 `key_not_found`.
+
+The secret is opened inside the request, sent to the provider and never
+returned, logged or kept. The body is forwarded byte for byte (at most
+`PROXY_BODY_MAX_BYTES`, above the render's own cap) and a 2xx answer streams
+back unchanged. A provider refusal is not echoed, because its body can carry
+a credential: the Queen answers the same status with an empty body and names
+it in `x-hive-upstream-status`, and the render writes the client's reply. A
+reply without that header is the Queen's own refusal. The model in the body
+is the render's to set; it sets the model the owner chose for that provider.
+
+Off unless `TRIOS_KEY_PROXY=on`: every path answers 503 and reads nothing.
+Turning it on needs no other variable (the capability token and the
+encryption key are the ones the rest of this API already uses).
 
 ## One model for all of an owner's keys
 
