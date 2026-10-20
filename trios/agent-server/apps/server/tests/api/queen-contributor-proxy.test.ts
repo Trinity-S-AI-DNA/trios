@@ -368,6 +368,7 @@ describe('mounted inside the key route, ahead of its 8 KiB body cap', () => {
       return next()
     })
     parent.post('/:id/:action', (c) => c.json({ error: 'invalid_action' }, 400))
+    parent.onError((_error, c) => c.json({ error: 'parent_handler' }, 503))
     const res = await parent.request('/proxy/-1/messages', {
       method: 'POST',
       headers: auth,
@@ -379,6 +380,10 @@ describe('mounted inside the key route, ahead of its 8 KiB body cap', () => {
       413,
     )
     expect(reached).toBe(true)
+    // The proxy's own error handler still answers for its paths.
+    const refused = await parent.request('/proxy/keys')
+    expect(refused.status).toBe(403)
+    expect(await refused.json()).toEqual({ error: 'forbidden' })
   })
 })
 
