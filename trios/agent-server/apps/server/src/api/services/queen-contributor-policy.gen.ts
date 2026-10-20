@@ -44,6 +44,8 @@ export const PROXY_FLAG_ENV = "TRIOS_KEY_PROXY" satisfies string;
 // t27c gen-ts: fn model_fits was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn may_switch_model was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn may_try_model_check was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn probe_waits was not emitted -- this backend lowers declarations, not bodies.
+// t27c gen-ts: fn header_names was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn proxy_may_open was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn proxy_flag_on was not emitted -- this backend lowers declarations, not bodies.
 // t27c gen-ts: fn proxy_cap_fits was not emitted -- this backend lowers declarations, not bodies.
