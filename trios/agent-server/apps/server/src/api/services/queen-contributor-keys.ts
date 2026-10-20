@@ -40,7 +40,7 @@ export interface ContributorKey {
   createdAt: string | null
   lastProbe: KeyProbe
 }
-interface KeyRow {
+export interface KeyRow {
   key_index: number
   source: 'managed' | 'environment'
   fingerprint: string
@@ -697,7 +697,8 @@ export async function addContributorKey(
   }
 }
 
-async function ownedRow(
+/** The owner's own row, and its secret when asked; never another owner's. */
+export async function ownedRow(
   pool: Pool,
   subject: string,
   id: number,

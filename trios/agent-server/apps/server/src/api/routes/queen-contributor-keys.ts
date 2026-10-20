@@ -25,6 +25,7 @@ import {
   rank,
   SPEC_XP,
 } from '../services/queen-leaderboard'
+import { createQueenContributorProxyRoute } from './queen-contributor-proxy'
 
 export interface ContributorRouteDeps {
   pool?: () => Pool
@@ -65,6 +66,19 @@ export function createQueenContributorKeysRoute(
   deps: ContributorRouteDeps = {},
 ) {
   const app = new Hono<{ Variables: { contributor: string; body: string } }>()
+  // Spending a stored key for one provider call (hive-proxy.t27). Registered
+  // before the middleware below: its 8 KiB body cap is for key forms, and the
+  // proxy does its own auth and its own, larger, cap.
+  app.route(
+    '/proxy',
+    createQueenContributorProxyRoute({
+      pool: () => (deps.pool ?? poolForKeys)(),
+      environment: () => (deps.environment ?? environmentContributorKeys)(),
+      owners: () =>
+        (deps.owners ?? (() => parseOwners(process.env.TRIOS_KEY_OWNERS)))(),
+      fetcher: deps.fetcher,
+    }),
+  )
   app.use('/*', async (c, next) => {
     c.header('Cache-Control', 'no-store')
     try {
