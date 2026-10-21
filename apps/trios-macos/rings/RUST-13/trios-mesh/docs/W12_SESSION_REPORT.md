@@ -12,7 +12,7 @@
 192.168.1.11  Linux 5.10.0  AD9361=ad9361-phy  SD boot  ✓
 192.168.1.12  Linux 5.10.0  AD9361=ad9361-phy  SD boot  ✓
 192.168.1.13  Linux 5.10.0  AD9361=ad9361-phy  SD boot  ✓
-SSH: sshpass -p 'analog' ssh -o PubkeyAuthentication=no root@192.168.1.1N
+SSH: SSHPASS=... sshpass -e ssh -o PubkeyAuthentication=no root@192.168.1.1N
 ```
 
 ---
@@ -35,7 +35,7 @@ SSH: sshpass -p 'analog' ssh -o PubkeyAuthentication=no root@192.168.1.1N
 3. SD карту вставить ДО подачи питания (auto-detect в bootROM)
 4. USB power + Ethernet в роутер
 5. Ждать 60-90 секунд
-6. SSH: `sshpass -p 'analog' ssh -o PubkeyAuthentication=no root@192.168.1.10`
+6. SSH: `SSHPASS=... sshpass -e ssh -o PubkeyAuthentication=no root@192.168.1.10`
 
 ### Multi-board: runtime IP separation
 ```bash

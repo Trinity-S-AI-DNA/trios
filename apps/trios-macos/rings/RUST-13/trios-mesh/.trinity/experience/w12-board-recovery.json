@@ -15,8 +15,8 @@
   "working_recipe": {
     "sd_files": ["BOOT.BIN (Kuiper 4.7MB)", "uImage (4.3MB)", "devicetree.dtb (19KB)", "uramdisk.image.gz (5.6MB)", "uEnv.txt (7KB)"],
     "boot_switch": "QSPI/SD",
-    "ssh": "sshpass -p analog ssh -o PubkeyAuthentication=no root@192.168.1.10",
-    "ssh_password": "analog"
+    "ssh": "sshpass -e ssh -o PubkeyAuthentication=no root@192.168.1.10",
+    "ssh_password": "env SSHPASS (board root password; never committed)"
   },
   "mistakes": [
     "Read wrong PLL register (0x11C instead of 0x10C) for 15+ attempts",

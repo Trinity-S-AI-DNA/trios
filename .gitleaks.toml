@@ -1,0 +1,49 @@
+# Secret gate for gHashTag/trios. Shared rules: canonical copy in gHashTag/t27 .gitleaks.toml (PR #6433).
+#
+# Three layers, each catching what the one before missed:
+#   1. lefthook pre-commit  -> gitleaks scans staged changes (lefthook.yml)
+#   2. lefthook pre-push    -> gitleaks scans commits not yet on any remote
+#   3. CI secret-scan       -> gitleaks scans the PR range; cannot be skipped
+#                              with --no-verify (.github/workflows/secret-scan.yml)
+# Secrets belong in the environment or in gitignored files, never in the tree.
+
+[extend]
+useDefault = true
+
+# The default rules miss Wi-Fi passphrases and other plain passwords.
+[[rules]]
+id = "hardcoded-password-literal"
+description = "Hardcoded password/passphrase string literal (e.g. Wi-Fi credentials in firmware)"
+regex = '''(?i)\b[a-z_]*(passphrase|password|passwd|wifi_?pass|psk)[a-z_]*\b["']?\s*[:=]\s*["']([^"'<>${}\s]{6,})["']'''
+secretGroup = 2
+keywords = ["passphrase", "password", "passwd", "wifi", "psk"]
+[[rules.allowlists]]
+regexTarget = "match"
+regexes = ['''(?i)(your|example|changeme|placeholder|dummy|test|xxx|\*\*\*)''']
+
+
+[[allowlists]]
+description = "Coq proof identifiers in trios-chat (lemma names such as *_canonical_secret_*), not values"
+# No paths: a global allowlist with paths + condition=AND skips the whole file in gitleaks 8.30.
+regexTarget = "match"
+regexes = ['''^(wps_canonical_secret_accepted_30|kpi_canonical_init_key_accepted_31|emu_canonical_mailbox_token_accepted_34)\b''']
+
+[[allowlists]]
+description = "Prose doc comment in trios-mesh crypto.rs (HKDF session key)"
+regexTarget = "line"
+regexes = ['''^//! M1 crypto core: X25519 handshake -> HKDF session key -> ChaCha20-Poly1305 AEAD$''']
+
+[[allowlists]]
+description = "Synthetic sk_test_ key in clade-audit's test of its own hardcoded-key detector"
+regexTarget = "line"
+regexes = ['''^\s*assert!\(re\.is_match\(r#"api_key = "sk_test_[A-Za-z0-9]+""#\)\);$''']
+
+[[allowlists]]
+description = "Synthetic secrets that trios-macos redaction tests feed to the redactor (jwt.io sample JWT, sequential fake keys, repeated-word PEM body)"
+regexTarget = "line"
+regexes = [
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.SflKxwRJSMeKKF2QT4fwpM''',
+  '''^\s*\{"api_key":"sk-ant-api03-[a-z]+","password":"hunter2"\}$''',
+  '''^\s*let secret = "sk-proj-[a-z0-9]+"$''',
+  '''-----BEGIN CUSTOM PRIVATE KEY-----''',
+]

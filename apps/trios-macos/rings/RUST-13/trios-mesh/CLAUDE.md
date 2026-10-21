@@ -33,7 +33,7 @@ All logic MUST follow this pipeline — NO exceptions:
 
 ## Hardware target
 - 3x P201Mini (Zynq 7020 + AD9361, armv7l, Linux 5.10)
-- SSH: `sshpass -p analog ssh -o PubkeyAuthentication=no root@192.168.1.{11,12,13}`
+- SSH: `SSHPASS=... sshpass -e ssh -o PubkeyAuthentication=no root@192.168.1.{11,12,13}`
 - Cross-compile: `cargo zigbuild --release --target armv7-unknown-linux-musleabihf`
 
 ## Validation
