@@ -174,6 +174,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
         ApplicationMenuInstaller.install(delegate: self)
+        #if TRIOS_CALLS
+        // Internet calls are received for the whole app session, whatever tab
+        // is selected (.trinity/specs/internet-calls.md, #2053).
+        InternetCallsModel.shared.start()
+        IncomingCallPanel.shared.start(model: InternetCallsModel.shared)
+        #endif
 
         setupStatusItem()
         // Rotate JSONL audit streams before anything starts writing to them.

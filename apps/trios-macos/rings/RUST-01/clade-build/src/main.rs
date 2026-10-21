@@ -66,8 +66,6 @@ fn main() {
     collect_swift_files(&variant.build_root.join("rings"), &mut swift_files);
     collect_lean_br_output(&variant.build_root.join("BR-OUTPUT"), &mut swift_files);
 
-    let file_count = swift_files.len();
-
     // Build Trinity QueenUILib dependency first so the trios sources can import it.
     let queen_bin_dir = match build_queen_lib() {
         Ok(p) => p,
@@ -84,6 +82,15 @@ fn main() {
         Ok(s) => s,
         Err(e) => { eprintln!("[FAIL] {}", e); std::process::exit(1); }
     };
+
+    // TRI-NET calling seam (.trinity/specs/internet-calls.md, #2053): the
+    // pinned TRI-NET shared Swift plus a SwiftPM-built LiveKit.
+    let seam = match build_calling_seam(&variant.build_root) {
+        Ok(s) => s,
+        Err(e) => { eprintln!("[FAIL] {}", e); std::process::exit(1); }
+    };
+    swift_files.extend(seam.swift_files.iter().cloned());
+    let file_count = swift_files.len();
 
     // Build
     let mut cmd = Command::new("swiftc");
@@ -112,6 +119,17 @@ fn main() {
         .arg("-L")
         .arg(&queen_bin_dir)
         .arg("-lQueenUILib")
+        .arg("-D")
+        .arg("TRIOS_CALLS")
+        .arg("-I")
+        .arg(seam.bin_dir.join("Modules"))
+        .arg("-I")
+        .arg(&seam.bin_dir)
+        .arg("-F")
+        .arg(&seam.bin_dir)
+        .arg("-L")
+        .arg(&seam.bin_dir)
+        .arg("-lTriOSLiveKit")
         .arg("-Xlinker")
         .arg("-rpath")
         .arg("-Xlinker")
@@ -176,6 +194,8 @@ fn main() {
     <key>TRIOS_A2A_PORT</key><string>{}</string>
     <key>TRIOS_MESH_PORT</key><string>{}</string>
     <key>TRIOS_CANARY_MCP_PORT</key><string>{}</string>
+    <key>TRINET_IDENTITY_KEYCHAIN_SERVICE</key><string>com.browseros.trios.trinet-identity</string>
+    <key>NSMicrophoneUsageDescription</key><string>TriOS uses the microphone for Internet calls you place or answer.</string>
 </dict>
 </plist>"#,
         variant.bundle_id,
@@ -201,6 +221,17 @@ fn main() {
     ) {
         eprintln!("[CladeBuild] Failed to bundle SQLCipher dylib: {}", e);
     }
+    if let Err(e) = embed_calling_seam(&seam, &frameworks) {
+        eprintln!("[FAIL] {}", e);
+        std::process::exit(1);
+    }
+    // A runnable bundle (#2053): CFBundleExecutable=trios must exist in
+    // Contents/MacOS, QueenUILib must be next to the other frameworks, and
+    // the bundle is signed ad hoc after its last change.
+    if let Err(e) = complete_app_bundle(&variant, &queen_bin_dir, &macos, &frameworks) {
+        eprintln!("[FAIL] {}", e);
+        std::process::exit(1);
+    }
 
     println!(
         "[OK] Copied to .app bundle: {} (files={}, ports MCP={} A2A={} MESH={} CANARY={})",
@@ -224,10 +255,16 @@ struct SQLCipherPaths {
 fn resolve_sqlcipher(build_root: &Path) -> Result<SQLCipherPaths, String> {
     let include_dir = run_pkg_config("--variable=includedir")?;
     let lib_dir = run_pkg_config("--variable=libdir")?;
-    let csqlcipher_modulemap_dir = build_root
-        .parent()
-        .map(|p| p.join("Sources/CSQLCipher"))
-        .ok_or_else(|| "Cannot locate Sources/CSQLCipher".to_string())?
+    // apps/trios-macos keeps Sources/CSQLCipher inside the app root (monorepo);
+    // the old browseros layout kept it next to it. Accept either.
+    let mut candidates = vec![build_root.join("Sources/CSQLCipher")];
+    if let Some(parent) = build_root.parent() {
+        candidates.push(parent.join("Sources/CSQLCipher"));
+    }
+    let csqlcipher_modulemap_dir = candidates
+        .into_iter()
+        .find(|dir| dir.join("module.modulemap").is_file())
+        .ok_or_else(|| "Cannot locate Sources/CSQLCipher in the app root or its parent".to_string())?
         .to_string_lossy()
         .to_string();
     let dylib_source = find_sqlcipher_dylib(&lib_dir)?;
@@ -238,6 +275,195 @@ fn resolve_sqlcipher(build_root: &Path) -> Result<SQLCipherPaths, String> {
         dylib_source,
         dylib_name: "libsqlcipher.dylib".to_string(),
     })
+}
+
+/// Copies the built binary and QueenUILib into the bundle, signs it ad hoc
+/// and verifies the signature. The binary is copied after SQLCipher's load
+/// path was rewritten, so the bundled copy carries it.
+fn complete_app_bundle(
+    variant: &Variant,
+    queen_bin_dir: &str,
+    macos_dir: &Path,
+    frameworks_dir: &Path,
+) -> Result<(), String> {
+    let executable = macos_dir.join("trios");
+    let _ = fs::remove_file(&executable);
+    fs::copy(&variant.output, &executable)
+        .map_err(|e| format!("copy {} to {}: {}", variant.output.display(), executable.display(), e))?;
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))
+        .map_err(|e| format!("chmod {}: {}", executable.display(), e))?;
+    let queen_dylib = Path::new(queen_bin_dir).join("libQueenUILib.dylib");
+    let queen_target = frameworks_dir.join("libQueenUILib.dylib");
+    let _ = fs::remove_file(&queen_target);
+    fs::copy(&queen_dylib, &queen_target)
+        .map_err(|e| format!("copy {}: {}", queen_dylib.display(), e))?;
+    for args in [
+        vec!["--force", "--deep", "--sign", "-"],
+        vec!["--verify", "--deep", "--strict"],
+    ] {
+        let status = Command::new("codesign")
+            .args(&args)
+            .arg(&variant.app_bundle)
+            .status()
+            .map_err(|e| format!("codesign failed to start: {}", e))?;
+        if !status.success() {
+            return Err(format!("codesign {:?} {} failed", args, variant.app_bundle.display()));
+        }
+    }
+    Ok(())
+}
+
+/// TRI-NET calling seam (.trinity/specs/internet-calls.md, #2053).
+struct CallingSeam {
+    swift_files: Vec<PathBuf>,
+    bin_dir: PathBuf,
+    dylib: PathBuf,
+    frameworks: Vec<PathBuf>,
+}
+
+/// Reads `TRINET_PIN`: the TRI-NET commit and the shared files to compile.
+fn read_trinet_pin(build_root: &Path) -> Result<(String, Vec<String>), String> {
+    let pin_path = build_root.join("TRINET_PIN");
+    let text = fs::read_to_string(&pin_path)
+        .map_err(|e| format!("read {}: {}", pin_path.display(), e))?;
+    let mut commit = None;
+    let mut files = Vec::new();
+    for line in text.lines().map(str::trim) {
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some(value) = line.strip_prefix("commit=") {
+            commit = Some(value.trim().to_string());
+        } else if let Some(value) = line.strip_prefix("files=") {
+            files = value.split_whitespace().map(str::to_string).collect();
+        }
+    }
+    let commit = commit.ok_or_else(|| "TRINET_PIN has no commit= line".to_string())?;
+    if commit.len() != 40 || !commit.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(format!("TRINET_PIN commit is not a full SHA: {}", commit));
+    }
+    if files.is_empty() {
+        return Err("TRINET_PIN has no files= line".to_string());
+    }
+    Ok((commit, files))
+}
+
+/// Verifies the TRI-NET checkout is exactly at the pin, builds the LiveKit
+/// package and returns what the app compile and the bundle need.
+fn build_calling_seam(build_root: &Path) -> Result<CallingSeam, String> {
+    let (commit, files) = read_trinet_pin(build_root)?;
+    let trinet_root = if let Ok(root) = env::var("TRINET_ROOT") {
+        PathBuf::from(root)
+    } else {
+        build_root
+            .parent()
+            .and_then(|p| p.parent())
+            .map(|p| p.join("TRI-NET"))
+            .ok_or_else(|| "Cannot derive TRINET_ROOT; set it to the gHashTag/tri-net checkout".to_string())?
+    };
+    let head = Command::new("git")
+        .arg("-C")
+        .arg(&trinet_root)
+        .arg("rev-parse")
+        .arg("HEAD")
+        .output()
+        .map_err(|e| format!("git rev-parse in {} failed: {}", trinet_root.display(), e))?;
+    if !head.status.success() {
+        return Err(format!("TRINET_ROOT {} is not a git checkout", trinet_root.display()));
+    }
+    let head = String::from_utf8_lossy(&head.stdout).trim().to_string();
+    if head != commit {
+        return Err(format!(
+            "TRINET_ROOT {} is at {}, TRINET_PIN requires {}",
+            trinet_root.display(),
+            head,
+            commit
+        ));
+    }
+    let mut swift_files = Vec::new();
+    for file in &files {
+        let path = trinet_root.join(file);
+        if !path.is_file() {
+            return Err(format!("pinned TRI-NET file missing: {}", path.display()));
+        }
+        swift_files.push(path);
+    }
+
+    let package = build_root.join("packages/TriOSLiveKit");
+    println!("[CladeBuild] Building TriOSLiveKit at {}", package.display());
+    let build = Command::new("swift")
+        .arg("build")
+        .arg("--package-path")
+        .arg(&package)
+        .arg("--product")
+        .arg("TriOSLiveKit")
+        .output()
+        .map_err(|e| format!("swift build (TriOSLiveKit) failed to start: {}", e))?;
+    if !build.status.success() {
+        return Err(format!(
+            "TriOSLiveKit build failed:\n{}",
+            String::from_utf8_lossy(&build.stderr)
+        ));
+    }
+    let bin = Command::new("swift")
+        .arg("build")
+        .arg("--package-path")
+        .arg(&package)
+        .arg("--show-bin-path")
+        .output()
+        .map_err(|e| format!("swift build --show-bin-path failed to start: {}", e))?;
+    if !bin.status.success() {
+        return Err("swift build --show-bin-path (TriOSLiveKit) failed".to_string());
+    }
+    let bin_dir = PathBuf::from(String::from_utf8_lossy(&bin.stdout).trim());
+    let dylib = bin_dir.join("libTriOSLiveKit.dylib");
+    if !dylib.is_file() {
+        return Err(format!("TriOSLiveKit was not produced: {}", dylib.display()));
+    }
+    let mut frameworks = Vec::new();
+    let entries = fs::read_dir(&bin_dir)
+        .map_err(|e| format!("read {}: {}", bin_dir.display(), e))?;
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "framework") {
+            frameworks.push(path);
+        }
+    }
+    frameworks.sort();
+    Ok(CallingSeam {
+        swift_files,
+        bin_dir,
+        dylib,
+        frameworks,
+    })
+}
+
+/// Copies the LiveKit dylib and its frameworks into Contents/Frameworks;
+/// `ditto` keeps the symlinks inside a framework bundle.
+fn embed_calling_seam(seam: &CallingSeam, frameworks_dir: &Path) -> Result<(), String> {
+    let dylib_target = frameworks_dir.join("libTriOSLiveKit.dylib");
+    let _ = fs::remove_file(&dylib_target);
+    fs::copy(&seam.dylib, &dylib_target)
+        .map_err(|e| format!("copy {}: {}", seam.dylib.display(), e))?;
+    for framework in &seam.frameworks {
+        let name = framework
+            .file_name()
+            .ok_or_else(|| format!("framework without a name: {}", framework.display()))?;
+        let target = frameworks_dir.join(name);
+        if target.exists() {
+            fs::remove_dir_all(&target)
+                .map_err(|e| format!("remove {}: {}", target.display(), e))?;
+        }
+        let status = Command::new("ditto")
+            .arg(framework)
+            .arg(&target)
+            .status()
+            .map_err(|e| format!("ditto failed to start: {}", e))?;
+        if !status.success() {
+            return Err(format!("ditto {} failed", framework.display()));
+        }
+    }
+    Ok(())
 }
 
 fn run_pkg_config(arg: &str) -> Result<String, String> {
@@ -398,6 +624,9 @@ fn collect_lean_br_output(dir: &Path, out: &mut Vec<PathBuf>) {
         "MeshModels.swift",
         "MeshStatusViewModel.swift",
         "MeshTabView.swift",
+        // Internet calls; compiled empty unless -D TRIOS_CALLS (internet-calls.md).
+        "InternetCallsModel.swift",
+        "InternetCallsView.swift",
         "MessageBubbleView.swift",
         "ModelsTabView.swift",
         "ProjectPaths.swift",

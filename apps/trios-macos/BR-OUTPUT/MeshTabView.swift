@@ -15,6 +15,10 @@ struct MeshTabView: View {
     private enum MeshTab: String, CaseIterable {
         case status = "Status"
         case chat = "Chat"
+        #if TRIOS_CALLS
+        // Internet calls through TRI-NET (.trinity/specs/internet-calls.md).
+        case calls = "Calls"
+        #endif
     }
 
     var body: some View {
@@ -28,6 +32,10 @@ struct MeshTabView: View {
                 statusContent
             case .chat:
                 MeshChatView()
+            #if TRIOS_CALLS
+            case .calls:
+                InternetCallsView()
+            #endif
             }
         }
         .background(Color.clear)
