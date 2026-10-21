@@ -1,0 +1,139 @@
+name: TriOS calls seam
+
+# Builds the full trios.app with clade-build (rings/RUST-01) on a macOS runner:
+# the pinned TRI-NET shared calling Swift (apps/trios-macos/TRINET_PIN), the
+# LiveKit package (apps/trios-macos/packages/TriOSLiveKit), QueenUILib from
+# gHashTag/trinity and SQLCipher. Spec: apps/trios-macos/.trinity/specs/
+# internet-calls.md (#2053). Compile/link/bundle evidence only: no app launch,
+# no network call, no signing identity.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - apps/trios-macos/**
+      - .github/workflows/trios-calls-seam.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trios-calls-seam-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: clade-build with TRI-NET calling seam (macos-15)
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - name: Checkout trios
+        uses: actions/checkout@v4
+        with:
+          path: trios
+
+      - name: Read TRINET_PIN
+        id: pin
+        run: |
+          pin=trios/apps/trios-macos/TRINET_PIN
+          echo "repository=$(sed -n 's/^repository=//p' "$pin")" >> "$GITHUB_OUTPUT"
+          echo "commit=$(sed -n 's/^commit=//p' "$pin")" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout TRI-NET at the pin
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.pin.outputs.repository }}
+          ref: ${{ steps.pin.outputs.commit }}
+          path: TRI-NET
+
+      - name: Checkout trinity (Queen package only, pinned)
+        uses: actions/checkout@v4
+        with:
+          repository: gHashTag/trinity
+          # trinity main on 2026-10-21; apps/queen last changed at a6b56126.
+          ref: 8e535bc9bb9c2eafcf3f16ceb3e3cdfc70637ad5
+          path: trinity
+          sparse-checkout: apps/queen
+
+      - name: Toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+          brew install sqlcipher pkgconf
+          git -C TRI-NET rev-parse HEAD
+          git -C trinity rev-parse HEAD
+
+      - name: Build trios.app (clade-build)
+        env:
+          TRIOS_ROOT: ${{ github.workspace }}/trios/apps/trios-macos
+          TRINITY_ROOT: ${{ github.workspace }}/trinity
+          TRINET_ROOT: ${{ github.workspace }}/TRI-NET
+        run: cargo run --manifest-path trios/apps/trios-macos/rings/RUST-01/clade-build/Cargo.toml
+
+      - name: Verify the runnable bundle
+        working-directory: trios/apps/trios-macos
+        run: |
+          set -euo pipefail
+          app=trios.app
+          exe="$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")"
+          test -x "$exe"
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Print :TRINET_IDENTITY_KEYCHAIN_SERVICE' "$app/Contents/Info.plist"
+          codesign --verify --deep --strict "$app"
+          ls -la "$app/Contents/Frameworks"
+          # Dependency closure: every @rpath load command of the executable and
+          # of every embedded dylib/framework binary resolves inside the bundle.
+          missing=0
+          check() {
+            for dep in $(otool -L "$1" | tail -n +2 | awk '{print $1}' | grep '^@rpath/' || true); do
+              rel="${dep#@rpath/}"
+              if [ ! -e "$app/Contents/Frameworks/$rel" ]; then
+                echo "MISSING $dep (needed by $1)"; missing=1
+              fi
+            done
+          }
+          check "$exe"
+          for lib in "$app"/Contents/Frameworks/*.dylib; do check "$lib"; done
+          for fw in "$app"/Contents/Frameworks/*.framework; do
+            name=$(basename "$fw" .framework)
+            bin="$fw/$name"; [ -e "$bin" ] || bin="$fw/Versions/A/$name"
+            check "$bin"
+          done
+          otool -L "$exe" | grep -E 'TriOSLiveKit|QueenUILib|sqlcipher'
+          test "$missing" = 0
+          echo "InternetCallsView symbols: $(nm "$exe" | grep -c InternetCallsView || true)"
+
+      - name: Seam integration test (model + TRI-NET controller, stub server)
+        env:
+          TRINET_ROOT: ${{ github.workspace }}/TRI-NET
+        working-directory: trios/apps/trios-macos
+        run: |
+          set -euo pipefail
+          bin=$(swift build --package-path packages/TriOSLiveKit --show-bin-path)
+          swiftc -parse-as-library -D TRIOS_CALLS \
+            -I "$bin/Modules" -F "$bin" -L "$bin" -lTriOSLiveKit \
+            -Xlinker -rpath -Xlinker "$bin" \
+            tests/calls/internet_calls_seam_test.swift \
+            rings/SR-00/TriOSCallPolicy.swift \
+            BR-OUTPUT/InternetCallsModel.swift \
+            BR-OUTPUT/InternetCallsView.swift \
+            BR-OUTPUT/TriosTheme.swift \
+            rings/SR-00/TriosVisualTheme.swift \
+            "$TRINET_ROOT/phone/shared/CallIdentity.swift" \
+            "$TRINET_ROOT/phone/shared/InternetCall.swift" \
+            "$TRINET_ROOT/phone/shared/NicknameDirectory.swift" \
+            -o "$RUNNER_TEMP/internet_calls_seam_test"
+          "$RUNNER_TEMP/internet_calls_seam_test"
+
+      - name: Keep the bundle for app and device QA
+        if: success()
+        working-directory: trios/apps/trios-macos
+        run: ditto -c -k --keepParent trios.app "$RUNNER_TEMP/trios-app.zip"
+
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: trios-app-calls-${{ github.sha }}
+          path: ${{ runner.temp }}/trios-app.zip
+          retention-days: 30
