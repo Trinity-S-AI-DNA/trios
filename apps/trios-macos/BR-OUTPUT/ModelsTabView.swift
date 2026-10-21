@@ -1298,7 +1298,7 @@ struct ModelsTabView: View {
                 (
                     "General API",
                     "https://api.z.ai/api/paas/v4",
-                    "Standard or Compatible keys only. A Compatible key is billed to the account balance here, not to a Coding Plan."
+                    "Standard or Compatible keys only. A Compatible key is billed to the account balance here, not to a Coding Plan. Coding Plan keys work only in the coding tools Z.ai lists, and TriOS is not one of them."
                 )
             ]
         case .zaiStandard:
@@ -1306,7 +1306,7 @@ struct ModelsTabView: View {
                 (
                     "General API",
                     "https://api.z.ai/api/paas/v4",
-                    "Standard API keys. Billed to the account balance or usage bundles."
+                    "Standard API keys only, billed to the account balance or usage bundles. Coding Plan keys work only in the coding tools Z.ai lists, and TriOS is not one of them."
                 )
             ]
         default:

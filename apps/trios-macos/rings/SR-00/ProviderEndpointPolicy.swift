@@ -38,7 +38,8 @@ enum ProviderEndpointPolicy {
     /// Fixed, secret-free refusal shown wherever TriOS declines to send.
     static let codingPlanBlockReason = """
         TriOS does not send requests to the Z.AI Coding Plan endpoint: Z.ai \
-        limits the Coding Plan to its listed coding tools. This configuration \
+        limits Coding Plan keys to its listed coding tools, and TriOS is not \
+        one of them (https://docs.z.ai/devpack/tool/others). This configuration \
         and its keys are kept unchanged and are never moved to another \
         endpoint automatically. To use Z.AI here, add a Standard API key under \
         "Z.AI API".
