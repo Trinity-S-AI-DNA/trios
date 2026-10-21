@@ -317,6 +317,9 @@ final class IncomingCallPanel {
 
     private init() {}
 
+    /// True while the incoming-call panel is on screen.
+    var isShowing: Bool { panel?.isVisible ?? false }
+
     func start(model: InternetCallsModel) {
         guard subscription == nil else { return }
         subscription = model.$incoming

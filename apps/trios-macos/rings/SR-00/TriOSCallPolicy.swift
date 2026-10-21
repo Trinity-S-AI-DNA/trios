@@ -123,7 +123,7 @@ enum TriOSCallContactSource: Equatable, Sendable {
 }
 
 /// Why a typed call server address cannot be saved.
-enum TriOSServerAddressProblem: Equatable, Sendable {
+enum TriOSServerAddressProblem: Error, Equatable, Sendable {
     case empty
     case notHTTP
     case noHost

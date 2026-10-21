@@ -29,6 +29,8 @@ final class InternetCallsModel: ObservableObject {
     @Published private(set) var contacts: [DirectoryContact] = []
     @Published private(set) var isWorking = false
     @Published private(set) var notice: String?
+    /// How many times local media was released; one per ended call.
+    @Published private(set) var teardownCount = 0
     @Published var nicknameInput = ""
     @Published var linkCodeInput = ""
     @Published var searchQuery = ""
@@ -43,6 +45,13 @@ final class InternetCallsModel: ObservableObject {
     private var incomingWatch: Task<Void, Never>?
     private var answeredWatch: Task<Void, Never>?
     private var started = false
+    /// Bumped on every server change; an async result started for an older
+    /// server is dropped before it can change identity, binding or contacts.
+    private var serverGeneration = 0
+    private var serverTasks: [Task<Void, Never>] = []
+    /// Bumped by every call, answer and hang-up; a completion or error of a
+    /// superseded attempt never touches the current call.
+    private var callAttempt = 0
     /// Set once local media was released for the current call; cleared when
     /// a new call starts, so every end signal tears down exactly once.
     private var tornDown = true
@@ -113,19 +122,22 @@ final class InternetCallsModel: ObservableObject {
         }
         guard address != configuration.apiBaseURL else { return }
         let hadServer = !configuration.apiBaseURL.isEmpty
+        serverGeneration += 1
+        serverTasks.forEach { $0.cancel() }
+        serverTasks = []
+        isWorking = false
         controller?.stopIncomingPolling()
         incomingWatch?.cancel()
         answeredWatch?.cancel()
         incoming = nil
         contacts = []
         UserDefaults.standard.set(address, forKey: "internetAPIBaseURL")
-        configuration = InternetCallConfiguration(
-            apiBaseURL: address,
-            liveKitURL: configuration.liveKitURL,
-            accessToken: configuration.accessToken,
-            developmentRoomToken: ""
-        )
-        origin = TriOSCallOrigin.classify(address)
+        // Reload instead of copying: the shared loader sends a service access
+        // token only to the origin it belongs to (gHashTag/tri-net#415), so
+        // the previous server's token never reaches this one, also after a
+        // restart.
+        configuration = InternetCallConfiguration.load()
+        origin = TriOSCallOrigin.classify(configuration.apiBaseURL)
         serverAddressInput = address
         accountNickname = nil
         guard var current = identity else { return }
@@ -145,6 +157,7 @@ final class InternetCallsModel: ObservableObject {
     func claimNickname() {
         guard let identity, origin != .notConfigured else { return }
         let requested = nicknameInput
+        let generation = serverGeneration
         run { [configuration] in
             let api = InternetCallAPI(configuration: configuration)
             try await api.register(identity: identity, voipToken: nil)
@@ -152,8 +165,13 @@ final class InternetCallsModel: ObservableObject {
             guard claim.claimed else {
                 return "That nickname is taken. Try another one."
             }
-            let updated = try DeviceIdentityStore.shared.setNickname(claim.normalized)
-            await MainActor.run { self.adopt(updated) }
+            // Check and persist on the main actor, where server changes run,
+            // so a claim from a replaced server never reaches the Keychain.
+            try await MainActor.run {
+                guard generation == self.serverGeneration else { throw CancellationError() }
+                let updated = try DeviceIdentityStore.shared.setNickname(claim.normalized)
+                self.adopt(updated)
+            }
             return nil
         }
     }
@@ -172,10 +190,14 @@ final class InternetCallsModel: ObservableObject {
     func search() {
         guard let identity, accountBound else { return }
         let query = searchQuery
+        let generation = serverGeneration
         run { [configuration] in
             let api = InternetCallAPI(configuration: configuration)
             let found = try await api.internetContacts(exactNickname: query, identity: identity)
-            await MainActor.run { self.contacts = found }
+            try await MainActor.run {
+                guard generation == self.serverGeneration else { throw CancellationError() }
+                self.contacts = found
+            }
             return found.isEmpty ? "Nobody with that exact nickname." : nil
         }
     }
@@ -196,7 +218,7 @@ final class InternetCallsModel: ObservableObject {
     func call(_ contact: DirectoryContact) {
         guard canCall(contact), let controller else { return }
         notice = nil
-        tornDown = false
+        let attempt = beginAttempt()
         Task {
             do {
                 try await controller.start(
@@ -205,9 +227,18 @@ final class InternetCallsModel: ObservableObject {
                     video: TriOSCallPolicy.videoRequested
                 )
             } catch {
+                // A superseded attempt (hung up, or replaced by a newer call)
+                // must never end the current one.
+                guard attempt == self.callAttempt else { return }
                 self.teardown(notice: TriOSCallPolicy.errorText(for: .failed))
             }
         }
+    }
+
+    private func beginAttempt() -> Int {
+        callAttempt += 1
+        tornDown = false
+        return callAttempt
     }
 
     // MARK: Incoming
@@ -234,7 +265,7 @@ final class InternetCallsModel: ObservableObject {
         guard incomingActionsEnabled, let call = incoming, let controller else { return }
         incoming = nil
         incomingWatch?.cancel()
-        tornDown = false
+        let attempt = beginAttempt()
         Task {
             do {
                 try await controller.join(
@@ -242,8 +273,10 @@ final class InternetCallsModel: ObservableObject {
                     audio: TriOSCallPolicy.audioRequested,
                     video: TriOSCallPolicy.videoRequested
                 )
-                self.watchAnsweredCall(call.callID)
+                guard attempt == self.callAttempt else { return }
+                self.watchAnsweredCall(call.callID, attempt: attempt)
             } catch {
+                guard attempt == self.callAttempt else { return }
                 self.teardown(notice: TriOSCallPolicy.errorText(for: .failed))
             }
         }
@@ -281,6 +314,8 @@ final class InternetCallsModel: ObservableObject {
     func hangUp() {
         guard phase.allowsHangUp else { return }
         teardown(notice: nil)
+        // Any late completion of the attempt just ended is now stale.
+        callAttempt += 1
     }
 
     // MARK: End signals
@@ -304,6 +339,7 @@ final class InternetCallsModel: ObservableObject {
         answeredWatch = nil
         if !tornDown {
             tornDown = true
+            teardownCount += 1
             controller?.disconnect()
         }
         if let notice { self.notice = notice }
@@ -414,7 +450,7 @@ final class InternetCallsModel: ObservableObject {
     /// The shared status poll runs for outgoing calls only. For an answered
     /// call TriOS polls the status itself, so a remote hangup, a caller cancel
     /// or a revoked device ends the call here without waiting for LiveKit.
-    private func watchAnsweredCall(_ callID: String) {
+    private func watchAnsweredCall(_ callID: String, attempt: Int) {
         answeredWatch?.cancel()
         answeredWatch = Task { [weak self] in
             while !Task.isCancelled {
@@ -423,6 +459,7 @@ final class InternetCallsModel: ObservableObject {
                 guard let status = try? await controller.status(callID: callID) else {
                     continue
                 }
+                guard attempt == self.callAttempt else { return }
                 if status.isTerminal {
                     self.handleCallStatus(status)
                     return
@@ -434,15 +471,19 @@ final class InternetCallsModel: ObservableObject {
     private func run(_ operation: @escaping () async throws -> String?) {
         isWorking = true
         notice = nil
-        Task {
+        let generation = serverGeneration
+        let task = Task {
             do {
                 let message = try await operation()
+                guard generation == self.serverGeneration else { return }
                 self.notice = message
             } catch {
+                guard generation == self.serverGeneration else { return }
                 self.notice = TriOSCallPolicy.errorText(for: .failed)
             }
             self.isWorking = false
         }
+        serverTasks.append(task)
     }
 
     private static func defaultDeviceName() -> String {

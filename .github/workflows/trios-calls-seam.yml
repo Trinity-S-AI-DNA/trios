@@ -117,6 +117,9 @@ jobs:
             tests/calls/internet_calls_seam_test.swift \
             rings/SR-00/TriOSCallPolicy.swift \
             BR-OUTPUT/InternetCallsModel.swift \
+            BR-OUTPUT/InternetCallsView.swift \
+            BR-OUTPUT/TriosTheme.swift \
+            rings/SR-00/TriosVisualTheme.swift \
             "$TRINET_ROOT/phone/shared/CallIdentity.swift" \
             "$TRINET_ROOT/phone/shared/InternetCall.swift" \
             "$TRINET_ROOT/phone/shared/NicknameDirectory.swift" \

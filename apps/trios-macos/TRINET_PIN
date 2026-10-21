@@ -1,8 +1,9 @@
 # TRI-NET checkout whose shared calling Swift is compiled into TriOS.
 # Spec: .trinity/specs/internet-calls.md (gHashTag/trios#2053).
 # xtask build requires TRINET_ROOT at exactly this commit.
-# Commit from gHashTag/tri-net#416 (per-app identity Keychain service and
-# Internet-only exact lookup); move it to the merge commit once #416 lands.
+# Commit from gHashTag/tri-net#416 (per-app identity Keychain service,
+# Internet-only exact lookup, origin-scoped service token, account results
+# of a replaced server dropped); move it to the merge commit once #416 lands.
 repository=gHashTag/tri-net
-commit=f6fe7d45d2c1eb9c47da65b434938f998fc87878
+commit=f70939ab90e638ee62b33ff4b8de314189957769
 files=phone/shared/CallIdentity.swift phone/shared/InternetCall.swift phone/shared/NicknameDirectory.swift
