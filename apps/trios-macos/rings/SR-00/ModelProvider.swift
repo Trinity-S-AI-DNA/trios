@@ -82,13 +82,17 @@ enum ModelProvider: String, CaseIterable, Codable, Identifiable {
         case .zai, .zaiStandard:
             return ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flash", "glm-4.6"]
         case .nvidia:
-            // Chat models present in the public catalog on 2026-10-21.
+            // Chat models present in the public catalog on 2026-10-21. The
+            // first one is the key-test model: z-ai/glm-5.3-flash is the model
+            // the owner's Queen pool runs on these keys; a live key test with
+            // nvidia/nemotron-3-super-120b-a12b returned 404 for an owner key
+            // (2026-10-21), so a catalog listing is not proof a model is served.
             return [
-                "nvidia/nemotron-3-super-120b-a12b",
                 "z-ai/glm-5.3-flash",
                 "nvidia/nemotron-3-ultra-550b-a55b",
                 "deepseek-ai/deepseek-v4.1-flash",
-                "moonshotai/kimi-k2.6"
+                "moonshotai/kimi-k2.6",
+                "nvidia/nemotron-3-super-120b-a12b"
             ]
         }
     }
