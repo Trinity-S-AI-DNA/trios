@@ -116,6 +116,26 @@ enum ZAIErrorParser {
         retryableCodes.contains(code)
     }
 
+    /// Fixed, secret-free summary: a fixed sentence plus a bounded code, never
+    /// the provider's message, which may echo request data such as a key.
+    /// Used by key validation and health probes (provider-endpoint-policy.md).
+    static func fixedSummary(for error: ZAIError) -> String {
+        let code = displayCode(error.code)
+        if error.isBalanceExhausted {
+            return "Key valid - but the Z.AI balance is exhausted (code \(code))."
+        }
+        if isPlanLimit(error.code) {
+            return "Key valid - but Z.AI refuses it under the current plan, package or key type (code \(code))."
+        }
+        if authFailedCodes.contains(error.code) {
+            return "Z.AI rejected the key (code \(code))."
+        }
+        if isRetryable(error.code) {
+            return "Z.AI is rate limiting or overloaded (code \(code)); try again later."
+        }
+        return "Z.AI returned an error (code \(code))."
+    }
+
     /// One-line summary suitable for the Models tab key-test result.
     static func summary(for error: ZAIError) -> String {
         if error.isBalanceExhausted {

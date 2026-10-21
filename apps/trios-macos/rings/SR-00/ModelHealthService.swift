@@ -498,7 +498,7 @@ actor ModelHealthService: ModelHealthServiceProtocol {
                         where zaiError.isBalanceExhausted || ZAIErrorParser.isPlanLimit(zaiError.code):
                         // The key authenticates but cannot be used: keep the
                         // amber "valid but unusable" state with a fixed reason.
-                        message = ZAIErrorParser.summary(for: zaiError)
+                        message = ZAIErrorParser.fixedSummary(for: zaiError)
                         balanceWarning = zaiError.isBalanceExhausted
                             ? ZAIErrorParser.depletedWarning
                             : ZAIErrorParser.planLimitWarning
@@ -517,7 +517,7 @@ actor ModelHealthService: ModelHealthServiceProtocol {
                             httpMethod: "POST",
                             httpStatus: status,
                             latencyMs: latencyMs,
-                            message: ZAIErrorParser.summary(for: zaiError),
+                            message: ZAIErrorParser.fixedSummary(for: zaiError),
                             responseBody: "",
                             responseHeaders: responseHeaders,
                             quota: quota,
@@ -1090,9 +1090,9 @@ actor ModelHealthService: ModelHealthServiceProtocol {
                     // Plan limits (1308-1321) also arrive as 429 and do not
                     // lift on retry, so they are not reported as a rate limit.
                     return ModelHealthResult(
-                        health: .unavailable(reason: ZAIErrorParser.summary(for: zaiError)),
+                        health: .unavailable(reason: ZAIErrorParser.fixedSummary(for: zaiError)),
                         latencyMs: nil,
-                        quota: .depleted(reason: zaiError.message),
+                        quota: .depleted(reason: ZAIErrorParser.fixedSummary(for: zaiError)),
                         failureKind: .balance,
                         retryAfter: nil
                     )

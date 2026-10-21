@@ -335,6 +335,49 @@ final class ProviderEndpointPolicyTests: XCTestCase {
         }
     }
 
+    func testZAIKeyTestNeverReflectsUpstreamErrorText() async {
+        let sentinel = "SENTINEL-sk-zai-0000-leak-check"
+        let bodies: [(status: Int, body: String)] = [
+            (429, #"{"error":{"code":"1310","message":"limit for key \#(sentinel)"}}"#),
+            (429, #"{"error":{"code":"1113","message":"no balance for \#(sentinel)"}}"#),
+            (200, #"{"error":{"code":"1211","message":"unknown model, key=\#(sentinel)"}}"#),
+            (401, #"{"error":{"code":"1000","message":"bad key \#(sentinel)"}}"#),
+            (429, #"{"error":{"code":"1302","message":"slow down \#(sentinel)"}}"#),
+            (400, #"{"error":{"code":"\#(sentinel)","message":"\#(sentinel)"}}"#)
+        ]
+        for fixture in bodies {
+            StubURLProtocol.reset { request in
+                if request.url?.path.hasSuffix("/models") == true {
+                    return (200, #"{"data":[{"id":"glm-5.2"}]}"#)
+                }
+                return (fixture.status, fixture.body)
+            }
+            let result = await healthService().validateKey(
+                provider: .zaiStandard,
+                baseURL: generalHost,
+                apiKey: "zai-standard-test-key"
+            )
+            let exposed = [
+                result.message,
+                result.responseBody,
+                result.balanceWarning ?? "",
+                String(describing: result.quota)
+            ] + result.logs + Array(result.responseHeaders.values) + Array(result.responseHeaders.keys)
+            XCTAssertFalse(exposed.contains { $0.contains(sentinel) }, "\(fixture.status) \(fixture.body)")
+            XCTAssertFalse(exposed.contains { $0.contains("zai-standard-test-key") }, "key echoed")
+        }
+
+        // The same holds for the health probe of the selected model.
+        StubURLProtocol.reset { _ in (429, #"{"error":{"code":"1310","message":"\#(sentinel)"}}"#) }
+        let health = await healthService().probe(
+            model: "glm-5.2",
+            provider: .zaiStandard,
+            baseURL: generalHost,
+            apiKey: "zai-standard-test-key"
+        )
+        XCTAssertFalse(String(describing: health).contains(sentinel))
+    }
+
     func testCodingPlanRouteIsRefusedBeforeAnyRequest() async {
         StubURLProtocol.reset { _ in (200, self.completionBody) }
         let service = healthService()
