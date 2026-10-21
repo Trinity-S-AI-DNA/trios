@@ -133,7 +133,7 @@ actor ProviderStatusService: ProviderStatusServiceProtocol {
         switch provider {
         case .ollama:
             return url.appendingPathComponent("/api/tags")
-        case .zai:
+        case .zai, .zaiStandard:
             // z.ai does not publish a public model list endpoint.
             throw URLError(.badURL)
         default:

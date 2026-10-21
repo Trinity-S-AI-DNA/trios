@@ -23,8 +23,19 @@ struct ZAIError: Equatable, Sendable {
 enum ZAIErrorParser {
     /// Business code returned when the account balance or resource package is spent.
     static let insufficientBalanceCode = "1113"
-    /// Business codes returned for authentication problems.
-    static let authFailedCodes: Set<String> = ["1000", "1001", "1002"]
+    /// Business codes returned for authentication problems
+    /// (https://docs.z.ai/api-reference/api-code, read 2026-10-21).
+    static let authFailedCodes: Set<String> = ["1000", "1001", "1002", "1003", "1005"]
+    /// HTTP 429 codes that clear on their own: rate limit and overload.
+    static let retryableCodes: Set<String> = ["1302", "1305"]
+    /// HTTP 429 codes for plan usage limits, expired plans or packages, a
+    /// model outside the plan, a fair-use restriction, or a key of another
+    /// product type. Retrying the same request, or the same request with
+    /// another key, does not lift the provider's limit.
+    static let planLimitCodes: Set<String> = [
+        "1308", "1309", "1310", "1311", "1313", "1314", "1315",
+        "1316", "1317", "1318", "1319", "1320", "1321"
+    ]
 
     static let depletedWarning = """
         This key authenticates, but the Z.AI account balance is exhausted. Every \
@@ -55,7 +66,9 @@ enum ZAIErrorParser {
         let isBalanceExhausted = code == insufficientBalanceCode || mentionsBalance(message)
         // Auth failures and balance exhaustion cannot be fixed by retrying the
         // same request; retrying only multiplies the noise and the latency.
-        let isTerminal = isBalanceExhausted || authFailedCodes.contains(code)
+        let isTerminal = isBalanceExhausted
+            || authFailedCodes.contains(code)
+            || planLimitCodes.contains(code)
 
         return ZAIError(
             code: code,
@@ -74,14 +87,47 @@ enum ZAIErrorParser {
             || lower.contains("please recharge")
     }
 
+    static func isPlanLimit(_ code: String) -> Bool {
+        planLimitCodes.contains(code)
+    }
+
+    static let planLimitWarning = """
+        This key authenticates, but Z.AI refuses requests under its current plan, \
+        package or key type. TriOS does not switch keys or endpoints to get around \
+        a provider limit.
+        """
+
+    /// A provider code is shown only when it is 3 to 5 ASCII digits. Kept in
+    /// this file so the standalone parser tests compile it alone.
+    static func safeCode(_ code: String) -> String? {
+        guard (3...5).contains(code.count),
+              code.allSatisfy({ $0.isASCII && $0.isNumber }) else {
+            return nil
+        }
+        return code
+    }
+
+    /// The code as shown to the user: 3 to 5 ASCII digits, otherwise "unknown".
+    static func displayCode(_ code: String) -> String {
+        safeCode(code) ?? "unknown"
+    }
+
+    static func isRetryable(_ code: String) -> Bool {
+        retryableCodes.contains(code)
+    }
+
     /// One-line summary suitable for the Models tab key-test result.
     static func summary(for error: ZAIError) -> String {
         if error.isBalanceExhausted {
-            return "Key valid - but the Z.AI balance is exhausted (code \(error.code))."
+            return "Key valid - but the Z.AI balance is exhausted (code \(displayCode(error.code)))."
         }
-        if error.code.isEmpty {
+        if isPlanLimit(error.code) {
+            return "Key valid - but Z.AI refuses it under the current plan, package or key type (code \(error.code))."
+        }
+        // A code that is not 3 to 5 digits is dropped rather than reflected.
+        guard let code = safeCode(error.code) else {
             return "Z.AI error: \(error.message)"
         }
-        return "Z.AI error \(error.code): \(error.message)"
+        return "Z.AI error \(code): \(error.message)"
     }
 }

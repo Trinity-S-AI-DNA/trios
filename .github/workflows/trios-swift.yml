@@ -104,6 +104,24 @@ jobs:
             -o "$RUNNER_TEMP/chat_logic_test"
           "$RUNNER_TEMP/chat_logic_test"
 
+      # .trinity/specs/provider-endpoint-policy.md (#2051): Z.AI Coding Plan
+      # routes refused, NVIDIA wire mapping, completion classifier, error codes.
+      - name: Focused standalone test — ProviderEndpointPolicy
+        working-directory: apps/trios-macos
+        run: |
+          swiftc tests/swift/provider_endpoint_policy_test.swift \
+            rings/SR-00/ModelProvider.swift \
+            rings/SR-00/ProviderEndpointPolicy.swift \
+            rings/SR-00/ZAIErrorParser.swift \
+            rings/SR-00/ModelKeyRotation.swift \
+            rings/SR-00/ModelCatalogService.swift \
+            -o "$RUNNER_TEMP/provider_endpoint_policy_test"
+          "$RUNNER_TEMP/provider_endpoint_policy_test"
+          swiftc tests/swift/zai_error_parser_test.swift \
+            rings/SR-00/ZAIErrorParser.swift \
+            -o "$RUNNER_TEMP/zai_error_parser_test"
+          "$RUNNER_TEMP/zai_error_parser_test"
+
       # CI-safe project check: compiles the TriOSKit library (which includes the
       # rings/SR-00..SR-02 sources) and runs the XCTest suite. No GUI, no signing.
       - name: SwiftPM compile (TriOSKit)

@@ -1284,29 +1284,44 @@ struct ModelsTabView: View {
         .padding(.bottom, 2)
     }
 
-    /// Named hosts for providers that ship more than one.
+    /// Named hosts for providers whose endpoint choice matters.
     ///
-    /// Z.AI is the reason this exists: a Coding Plan key authenticates on the
-    /// pay-as-you-go host but fails every completion there with code 1113
-    /// "Insufficient balance", which looks exactly like an expired key. Making
-    /// the choice explicit stops that misdiagnosis.
+    /// Z.AI bills by key type and endpoint
+    /// (https://docs.z.ai/devpack/notice/api-key-management). The Coding Plan
+    /// endpoint is not offered: Z.ai limits it to its listed coding tools and
+    /// TriOS refuses it (ProviderEndpointPolicy,
+    /// .trinity/specs/provider-endpoint-policy.md).
     private var endpointPresetsForProvider: [(label: String, url: String, note: String)] {
         switch store.selectedProvider {
         case .zai:
             return [
                 (
-                    "Coding Plan",
-                    "https://api.z.ai/api/coding/paas/v4",
-                    "Subscription keys. Use this unless you topped up a prepaid balance."
-                ),
-                (
-                    "Pay-as-you-go",
+                    "General API",
                     "https://api.z.ai/api/paas/v4",
-                    "Prepaid balance only. Subscription keys report code 1113 here."
+                    "Standard or Compatible keys only. A Compatible key is billed to the account balance here, not to a Coding Plan."
+                )
+            ]
+        case .zaiStandard:
+            return [
+                (
+                    "General API",
+                    "https://api.z.ai/api/paas/v4",
+                    "Standard API keys. Billed to the account balance or usage bundles."
                 )
             ]
         default:
             return []
+        }
+    }
+
+    /// Visible reason when TriOS refuses the selected route; nothing is sent.
+    @ViewBuilder
+    private var providerRefusalNotice: some View {
+        if let refusal = store.usageBlockReason {
+            Label(refusal, systemImage: "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+                .foregroundColor(.orange)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1356,6 +1371,7 @@ struct ModelsTabView: View {
         modelSection(title: "Endpoint", subtitle: "Advanced: use a compatible proxy or private gateway.") {
             VStack(alignment: .leading, spacing: 8) {
                 endpointPresets
+                providerRefusalNotice
                 HStack(spacing: 8) {
                     modelTextField("Base URL", text: $baseURLDraft)
                     Button("Apply") {
@@ -1572,7 +1588,8 @@ struct ModelsTabView: View {
         case .openai: return URL(string: "https://platform.openai.com/api-keys")
         case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")
         case .openrouter: return URL(string: "https://openrouter.ai/settings/keys")
-        case .zai: return URL(string: "https://z.ai/manage-apikey/apikey-list")
+        case .zai, .zaiStandard: return URL(string: "https://z.ai/manage-apikey/apikey-list")
+        case .nvidia: return URL(string: "https://build.nvidia.com/settings/api-keys")
         case .ollama: return nil
         }
     }

@@ -171,6 +171,11 @@ enum ModelKeyRotation {
         if let providerErrorCode, providerErrorCode == ZAIErrorParser.insufficientBalanceCode {
             return .depleted
         }
+        // A Z.AI plan limit arrives as HTTP 429 but does not lift on retry;
+        // parking it as a short rate limit would rotate around the limit.
+        if let providerErrorCode, ZAIErrorParser.isPlanLimit(providerErrorCode) {
+            return .depleted
+        }
         switch status {
         case 401, 403:
             return .rejected
