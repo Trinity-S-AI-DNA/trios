@@ -1,0 +1,35 @@
+commit-msg:
+  commands:
+    english-subject:
+      run: |
+        subject=$(head -1 {1})
+        if LC_ALL=C printf '%s' "$subject" | grep -q '[^ -~]'; then
+          echo "Commit subjects must be English ASCII."
+          exit 1
+        fi
+    agent-trailer:
+      run: |
+        if ! grep -Eq '^Agent: (ALPHA|BETA|GAMMA|DELTA|EPSILON|ZETA|LEAD)$' {1}; then
+          echo "Commit message must include an Agent: <CODENAME> trailer."
+          exit 1
+        fi
+
+pre-commit:
+  commands:
+    github-task-language:
+      run: |
+        rustc tools/issue-language-policy.rs -o /tmp/issue-language-policy
+        /tmp/issue-language-policy --self-test
+
+pre-push:
+  commands:
+    branch-name:
+      run: |
+        branch=$(git rev-parse --abbrev-ref HEAD)
+        if [[ "$branch" == "main" || "$branch" == "master" ]]; then
+          exit 0
+        fi
+        if [[ ! "$branch" =~ ^(feat|fix|docs|refactor|test|chore)/[a-z0-9-]+$ ]]; then
+          echo "Branch name '$branch' does not match the required format."
+          exit 1
+        fi

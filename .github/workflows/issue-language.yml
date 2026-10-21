@@ -1,0 +1,49 @@
+name: English GitHub tasks
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  enforce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate issue title and body
+        id: language
+        continue-on-error: true
+        env:
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          rustc tools/issue-language-policy.rs -o /tmp/issue-language-policy
+          /tmp/issue-language-policy
+
+      - name: Close a task that is not English
+        if: steps.language.outcome == 'failure' && github.event.issue.state == 'open'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const message = [
+              'GitHub tasks in this repository must be written entirely in English.',
+              'Please create a new issue with an English title and body.',
+              'This issue was closed automatically by the repository language policy.',
+            ].join('\n\n')
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: message,
+            })
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              state: 'closed',
+              state_reason: 'not_planned',
+            })
