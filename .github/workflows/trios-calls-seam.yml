@@ -112,7 +112,7 @@ jobs:
           set -euo pipefail
           bin=$(swift build --package-path packages/TriOSLiveKit --show-bin-path)
           swiftc -parse-as-library -D TRIOS_CALLS \
-            -I "$bin/Modules" -I "$bin" -F "$bin" -L "$bin" -lTriOSLiveKit \
+            -I "$bin/Modules" -F "$bin" -L "$bin" -lTriOSLiveKit \
             -Xlinker -rpath -Xlinker "$bin" \
             tests/calls/internet_calls_seam_test.swift \
             rings/SR-00/TriOSCallPolicy.swift \

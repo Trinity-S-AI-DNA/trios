@@ -123,8 +123,8 @@ fn main() {
         .arg("TRIOS_CALLS")
         .arg("-I")
         .arg(seam.bin_dir.join("Modules"))
-        .arg("-I")
-        .arg(&seam.bin_dir)
+        // Not the whole build directory: its *.build/module.modulemap files
+        // define SwiftProtobuf twice (library and -tool) and clang refuses.
         .arg("-F")
         .arg(&seam.bin_dir)
         .arg("-L")
