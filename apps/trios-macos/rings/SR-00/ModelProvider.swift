@@ -5,7 +5,16 @@ enum ModelProvider: String, CaseIterable, Codable, Identifiable {
     case openai
     case anthropic
     case openrouter
+    /// Legacy Z.AI bucket (Keychain account `zai`). Its keys may be Standard,
+    /// Compatible or Coding Plan keys; the bucket does not say which. A stored
+    /// general-API base URL keeps working. The default and any Coding Plan
+    /// route are refused by `ProviderEndpointPolicy` and never rewritten; see
+    /// `.trinity/specs/provider-endpoint-policy.md`.
     case zai
+    /// Z.AI general API with a Standard API key (`/api/paas/v4`).
+    case zaiStandard = "zai-standard"
+    /// NVIDIA API Catalog (hosted NIM), OpenAI-compatible.
+    case nvidia
 
     var id: String { rawValue }
 
@@ -15,7 +24,9 @@ enum ModelProvider: String, CaseIterable, Codable, Identifiable {
         case .openai: return "OpenAI"
         case .anthropic: return "Anthropic"
         case .openrouter: return "OpenRouter"
-        case .zai: return "Z.AI"
+        case .zai: return "Z.AI (legacy keys)"
+        case .zaiStandard: return "Z.AI API"
+        case .nvidia: return "NVIDIA"
         }
     }
 
@@ -26,9 +37,10 @@ enum ModelProvider: String, CaseIterable, Codable, Identifiable {
     /// Providers that expose a free public catalog endpoint listing available models.
     var hasProviderCatalog: Bool {
         switch self {
-        case .ollama, .zai:
+        case .ollama, .zai, .zaiStandard:
             return false
-        case .openai, .anthropic, .openrouter:
+        // NVIDIA's catalog is public: it lists models but never validates a key.
+        case .openai, .anthropic, .openrouter, .nvidia:
             return true
         }
     }
@@ -39,10 +51,12 @@ enum ModelProvider: String, CaseIterable, Codable, Identifiable {
         case .openai: return "https://api.openai.com/v1"
         case .anthropic: return "https://api.anthropic.com/v1"
         case .openrouter: return "https://openrouter.ai/api/v1"
-        // Coding Plan endpoint. The pay-as-you-go host (/api/paas/v4) answers
-        // every request with business code 1113 "Insufficient balance" for a
-        // subscription key, which made live Coding Plan keys look expired.
+        // Legacy default, kept so a configuration without a stored base URL is
+        // not silently moved to the billed general host. TriOS refuses this
+        // route (ProviderEndpointPolicy).
         case .zai: return "https://api.z.ai/api/coding/paas/v4"
+        case .zaiStandard: return "https://api.z.ai/api/paas/v4"
+        case .nvidia: return "https://integrate.api.nvidia.com/v1"
         }
     }
 
@@ -65,8 +79,34 @@ enum ModelProvider: String, CaseIterable, Codable, Identifiable {
                 "google/gemini-2.5-pro",
                 "google/gemini-2.5-flash"
             ]
-        case .zai:
+        case .zai, .zaiStandard:
             return ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4.7-flash", "glm-4.6"]
+        case .nvidia:
+            // Chat models present in the public catalog on 2026-10-21. The
+            // first one is the key-test model. Live evidence with the owner's
+            // keys (2026-10-21): nemotron-3-ultra answered on all three local
+            // keys and through ModelHealthService; nemotron-3-super and
+            // mistral-7b returned 404 "Function not found for account" and
+            // glm-5.3-flash did not answer within 60 s. A catalog listing is
+            // not proof that a model is served for a given account.
+            return [
+                "nvidia/nemotron-3-ultra-550b-a55b",
+                "z-ai/glm-5.3-flash",
+                "deepseek-ai/deepseek-v4.1-flash",
+                "moonshotai/kimi-k2.6",
+                "nvidia/nemotron-3-super-120b-a12b"
+            ]
+        }
+    }
+
+    /// Provider id the agent server accepts (`packages/shared/src/schemas/llm.ts`).
+    /// The server has no `nvidia` or `zai-standard` entry and throws on unknown
+    /// ids, so those UI/Keychain scopes map onto existing server factories.
+    var wireProvider: String {
+        switch self {
+        case .nvidia: return "openai-compatible"
+        case .zaiStandard: return ModelProvider.zai.rawValue
+        default: return rawValue
         }
     }
 
@@ -110,7 +150,7 @@ struct ModelRuntimeConfiguration: Equatable {
     }
 
     func apply(to body: inout [String: Any]) {
-        body["provider"] = provider.rawValue
+        body["provider"] = provider.wireProvider
         body["model"] = model
         body["baseUrl"] = baseURL
         if let apiKey, !apiKey.isEmpty {

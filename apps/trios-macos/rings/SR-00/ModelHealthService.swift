@@ -246,6 +246,9 @@ actor ModelHealthService: ModelHealthServiceProtocol {
         baseURL: String,
         apiKey: String?
     ) async -> ModelHealthResult {
+        if let refusal = ProviderEndpointPolicy.usageBlockReason(provider: provider, baseURL: baseURL) {
+            return ModelHealthResult(health: .unavailable(reason: refusal), latencyMs: nil)
+        }
         let key = cacheKey(model: model, provider: provider, baseURL: baseURL)
         if let entry = cache[key], Date().timeIntervalSince(entry.timestamp) < ttl {
             return entry.result
@@ -344,6 +347,22 @@ actor ModelHealthService: ModelHealthServiceProtocol {
         let start = Date()
         let trimmedBase = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedKey = apiKey?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        if let refusal = ProviderEndpointPolicy.usageBlockReason(provider: provider, baseURL: trimmedBase) {
+            return APIKeyValidationResult.invalid(
+                provider: provider,
+                baseURL: trimmedBase,
+                endpointURL: trimmedBase,
+                httpMethod: "POST",
+                httpStatus: nil,
+                latencyMs: 0,
+                message: refusal,
+                responseBody: "",
+                responseHeaders: [:],
+                quota: .unknown,
+                logs: ["Refused before any request: Z.AI Coding Plan route."]
+            )
+        }
 
         if provider == .ollama {
             return await validateOllamaKey(baseURL: trimmedBase, start: start)
@@ -466,21 +485,59 @@ actor ModelHealthService: ModelHealthServiceProtocol {
                         )
                     }
                 }
-                if provider == .zai {
+                if provider == .zai || provider == .zaiStandard {
                     // /models answers 200 for any key that authenticates, spent
                     // balance included. Only a real completion reveals code 1113,
                     // so spend one minimal token rather than report a false green.
                     let probe = await zaiBalanceProbe(baseURL: trimmedBase, apiKey: apiKey)
                     logs.append(contentsOf: probe.logs)
-                    if let zaiError = probe.error, zaiError.isBalanceExhausted {
-                        message = ZAIErrorParser.summary(for: zaiError)
-                        balanceWarning = ZAIErrorParser.depletedWarning
-                        effectiveQuota = .depleted(reason: zaiError.message)
+                    switch probe.result {
+                    case .canPay:
+                        break
+                    case .providerError(let zaiError)
+                        where zaiError.isBalanceExhausted || ZAIErrorParser.isPlanLimit(zaiError.code):
+                        // The key authenticates but cannot be used: keep the
+                        // amber "valid but unusable" state with a fixed reason.
+                        message = ZAIErrorParser.fixedSummary(for: zaiError)
+                        balanceWarning = zaiError.isBalanceExhausted
+                            ? ZAIErrorParser.depletedWarning
+                            : ZAIErrorParser.planLimitWarning
+                        effectiveQuota = .depleted(reason: message)
                         TriosLogBus.shared.warn(
                             .health,
                             "health.key.balance_exhausted",
-                            "Key authenticates but the account balance is spent",
-                            ["provider": provider.rawValue, "code": zaiError.code]
+                            "Key authenticates but the account cannot pay for requests",
+                            ["provider": provider.rawValue, "code": ZAIErrorParser.displayCode(zaiError.code)]
+                        )
+                    case .providerError(let zaiError):
+                        return APIKeyValidationResult.invalid(
+                            provider: provider,
+                            baseURL: trimmedBase,
+                            endpointURL: url.absoluteString,
+                            httpMethod: "POST",
+                            httpStatus: status,
+                            latencyMs: latencyMs,
+                            message: ZAIErrorParser.fixedSummary(for: zaiError),
+                            responseBody: "",
+                            responseHeaders: responseHeaders,
+                            quota: quota,
+                            logs: logs
+                        )
+                    case .inconclusive(let detail):
+                        // /models proved authentication only. Without a real
+                        // completion the key is not confirmed usable.
+                        return APIKeyValidationResult.invalid(
+                            provider: provider,
+                            baseURL: trimmedBase,
+                            endpointURL: url.absoluteString,
+                            httpMethod: "POST",
+                            httpStatus: status,
+                            latencyMs: latencyMs,
+                            message: "Key authenticated, but the test completion did not confirm it. \(detail)",
+                            responseBody: "",
+                            responseHeaders: responseHeaders,
+                            quota: quota,
+                            logs: logs
                         )
                     }
                 }
@@ -634,7 +691,11 @@ actor ModelHealthService: ModelHealthServiceProtocol {
         apiKey: String,
         start: Date
     ) async -> APIKeyValidationResult {
-        let probe = await probe(
+        // A key test must send this key. The shared `probe` cache is keyed by
+        // provider, base URL and model, not by credential, so a green result
+        // from another key must never answer for this one; the catalog
+        // pre-check is skipped too (NVIDIA's catalog is public).
+        let probe = await probeCloud(
             model: provider.defaultModel,
             provider: provider,
             baseURL: baseURL,
@@ -696,11 +757,13 @@ actor ModelHealthService: ModelHealthServiceProtocol {
         switch provider {
         case .openrouter:
             return (method: "GET", path: "/auth/key", extraHeaders: [:])
-        case .openai, .zai:
+        case .openai, .zai, .zaiStandard:
             return (method: "GET", path: "/models", extraHeaders: [:])
         case .anthropic:
             return (method: "GET", path: "/models", extraHeaders: [:])
-        case .ollama:
+        // NVIDIA's /models is public: HTTP 200 without a key proves nothing, so
+        // the key test falls back to an authenticated 1-token completion.
+        case .ollama, .nvidia:
             return nil
         }
     }
@@ -852,12 +915,12 @@ actor ModelHealthService: ModelHealthServiceProtocol {
     private func zaiBalanceProbe(
         baseURL: String,
         apiKey: String?
-    ) async -> (error: ZAIError?, logs: [String]) {
+    ) async -> (result: ZAIBalanceProbeResult, logs: [String]) {
         let url: URL
         do {
             url = try makeChatURL(baseURL: baseURL, provider: .zai)
         } catch {
-            return (nil, ["Balance probe skipped: invalid base URL."])
+            return (.inconclusive("Invalid base URL."), ["Balance probe skipped: invalid base URL."])
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -872,23 +935,28 @@ actor ModelHealthService: ModelHealthServiceProtocol {
             "max_tokens": 1
         ]
         guard let encoded = try? JSONSerialization.data(withJSONObject: body) else {
-            return (nil, ["Balance probe skipped: failed to encode body."])
+            return (.inconclusive("The test request could not be encoded."), ["Balance probe skipped: failed to encode body."])
         }
         request.httpBody = encoded
 
         do {
             let (data, response) = try await session.data(for: request)
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let bodyString = String(data: data, encoding: .utf8) ?? ""
             var logs = ["Balance probe POST \(url.absoluteString) -> HTTP \(status)"]
-            if let zaiError = ZAIErrorParser.parse(bodyString) {
-                logs.append("Balance probe error code \(zaiError.code): \(zaiError.message)")
-                return (zaiError, logs)
+            // An empty 200, an HTML 502 or a body without a completion is not
+            // proof that the account can pay; the caller must not call it valid.
+            let result = ZAIBalanceProbeResult.classify(status: status, body: data)
+            switch result {
+            case .canPay:
+                logs.append("Balance probe succeeded; the account can pay for requests.")
+            case .providerError(let zaiError):
+                logs.append("Balance probe error code \(ZAIErrorParser.displayCode(zaiError.code)).")
+            case .inconclusive(let detail):
+                logs.append("Balance probe inconclusive: \(detail)")
             }
-            logs.append("Balance probe succeeded; the account can pay for requests.")
-            return (nil, logs)
+            return (result, logs)
         } catch {
-            return (nil, ["Balance probe inconclusive: \(error.localizedDescription)"])
+            return (.inconclusive("The test request failed before an answer arrived."), ["Balance probe inconclusive: transport error."])
         }
     }
 
@@ -963,6 +1031,25 @@ actor ModelHealthService: ModelHealthServiceProtocol {
                 .flatMap { SSETransport.parseRetryAfter($0) }
             switch http.statusCode {
             case 200...299:
+                // NVIDIA can report overload as an error object inside a 200;
+                // new providers must show a real completion before "healthy".
+                if provider == .nvidia || provider == .zaiStandard {
+                    let outcome = CompletionProbeClassifier.classify(status: http.statusCode, body: data)
+                    let summary = CompletionProbeClassifier.summary(outcome, provider: provider)
+                    switch outcome {
+                    case .healthy:
+                        break
+                    case .providerError:
+                        return ModelHealthResult(
+                            health: .unavailable(reason: summary),
+                            latencyMs: nil,
+                            failureKind: .gateway,
+                            retryAfter: retryAfter
+                        )
+                    case .unexpectedResponse:
+                        return ModelHealthResult(health: .unknown(error: summary), latencyMs: nil)
+                    }
+                }
                 let quota = quotaStatus(from: http)
                 return ModelHealthResult(health: .healthy, latencyMs: nil, quota: quota)
             case 401, 403:
@@ -998,11 +1085,14 @@ actor ModelHealthService: ModelHealthServiceProtocol {
                 // Z.AI reports an exhausted balance as HTTP 429 with business
                 // code 1113. Treating that as a rate limit made the client retry
                 // a request that can never succeed, tripling the failure noise.
-                if let zaiError = ZAIErrorParser.parse(bodyString), zaiError.isBalanceExhausted {
+                if let zaiError = ZAIErrorParser.parse(bodyString),
+                   zaiError.isBalanceExhausted || ZAIErrorParser.isPlanLimit(zaiError.code) {
+                    // Plan limits (1308-1321) also arrive as 429 and do not
+                    // lift on retry, so they are not reported as a rate limit.
                     return ModelHealthResult(
-                        health: .unavailable(reason: ZAIErrorParser.summary(for: zaiError)),
+                        health: .unavailable(reason: ZAIErrorParser.fixedSummary(for: zaiError)),
                         latencyMs: nil,
-                        quota: .depleted(reason: zaiError.message),
+                        quota: .depleted(reason: ZAIErrorParser.fixedSummary(for: zaiError)),
                         failureKind: .balance,
                         retryAfter: nil
                     )
@@ -1138,10 +1228,11 @@ actor ModelHealthService: ModelHealthServiceProtocol {
 
     private func makeChatURL(baseURL: String, provider: ModelProvider) throws -> URL {
         switch provider {
-        case .openai, .zai:
+        case .openai, .zai, .zaiStandard, .nvidia:
             // Z.AI's base URL already carries the API version (.../api/paas/v4),
             // so appending /v1 produced /v4/v1/chat/completions -> HTTP 404 and
             // every Z.AI health probe failed regardless of key or balance.
+            // NVIDIA's base URL ends in /v1 for the same reason.
             return try makeURL(baseURL: baseURL, path: "/chat/completions")
         case .anthropic:
             return try makeURL(baseURL: baseURL, path: "/v1/messages")

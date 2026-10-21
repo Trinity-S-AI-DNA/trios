@@ -1281,17 +1281,23 @@ final class ChatViewModel: ObservableObject {
                 finishReason: nil)
         }
         let runtimeConfiguration = await modelStore.runtimeConfiguration
-        guard let requestBody = try? ChatRequestBuilder(
-            conversationId: conversationId,
-            message: text,
-            mode: "agent",
-            origin: "sidepanel",
-            userSystemPrompt: composedSystemPrompt(),
-            previousConversation: historyForRequest,
-            browserContext: nil,
-            modelConfiguration: runtimeConfiguration,
-            attachments: requestAttachments
-        ).build() else {
+        let requestBody: Data
+        do {
+            requestBody = try ChatRequestBuilder(
+                conversationId: conversationId,
+                message: text,
+                mode: "agent",
+                origin: "sidepanel",
+                userSystemPrompt: composedSystemPrompt(),
+                previousConversation: historyForRequest,
+                browserContext: nil,
+                modelConfiguration: runtimeConfiguration,
+                attachments: requestAttachments
+            ).build()
+        } catch let refusal as ChatRequestBuildError {
+            // A refused route (Z.AI Coding Plan) is shown verbatim; nothing is sent.
+            throw refusal
+        } catch {
             NSLog("[TriosChat] ChatRequestBuilder failed")
             throw ChatViewModelError.requestBuildFailed
         }
@@ -1640,6 +1646,9 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func formatRequestError(_ error: Error) -> String {
+        if let refusal = error as? ChatRequestBuildError {
+            return refusal.localizedDescription
+        }
         if let transportError = error as? TransportError {
             let providerMsg = transportError.providerErrorMessage
             let fallback = modelStore.fallbackSuggestion
@@ -3792,6 +3801,18 @@ struct ChatRequestAttachment: Equatable, Sendable {
     let dataURL: String
 }
 
+/// Errors that stop a chat request before it is sent.
+enum ChatRequestBuildError: LocalizedError, Equatable {
+    /// The provider route is refused by `ProviderEndpointPolicy`.
+    case providerRefused(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .providerRefused(let reason): return reason
+        }
+    }
+}
+
 struct ChatRequestBuilder {
     let conversationId: UUID
     let message: String
@@ -3808,6 +3829,9 @@ struct ChatRequestBuilder {
     /// found an unrelated old checkout under ~/gitbutler and edited that
     /// instead, so its branch here stayed empty.
     let workingDirectory: String?
+    /// Source for `ModelRuntimeConfiguration.environmentFallback` when no
+    /// configuration is supplied; injectable so the fallback is testable.
+    let fallbackEnvironment: [String: String]
 
     init(
         conversationId: UUID,
@@ -3819,7 +3843,8 @@ struct ChatRequestBuilder {
         browserContext: BrowserContext?,
         modelConfiguration: ModelRuntimeConfiguration? = nil,
         attachments: [ChatRequestAttachment]? = nil,
-        workingDirectory: String? = nil
+        workingDirectory: String? = nil,
+        fallbackEnvironment: [String: String] = ProcessInfo.processInfo.environment
     ) {
         self.conversationId = conversationId
         self.message = message
@@ -3831,6 +3856,7 @@ struct ChatRequestBuilder {
         self.modelConfiguration = modelConfiguration
         self.attachments = attachments
         self.workingDirectory = workingDirectory
+        self.fallbackEnvironment = fallbackEnvironment
     }
 
     private var memoryPrompt: String {
@@ -3863,6 +3889,16 @@ struct ChatRequestBuilder {
     }
 
     func build() throws -> Data {
+        // Resolve the configuration that will be serialised first, then apply
+        // the endpoint policy to that same value, fallback included.
+        let runtimeConfiguration = modelConfiguration
+            ?? .environmentFallback(fallbackEnvironment)
+        if let refusal = ProviderEndpointPolicy.usageBlockReason(
+            provider: runtimeConfiguration.provider,
+            baseURL: runtimeConfiguration.baseURL
+        ) {
+            throw ChatRequestBuildError.providerRefused(refusal)
+        }
         var messages: [[String: Any]] = []
 
         // System memory prompt. Recalled context is explicitly marked as untrusted
@@ -3887,8 +3923,6 @@ struct ChatRequestBuilder {
 
         let homeDir = workingDirectory
             ?? FileManager.default.homeDirectoryForCurrentUser.path
-
-        let runtimeConfiguration = modelConfiguration ?? .environmentFallback()
 
         var body: [String: Any] = [
             "conversationId": conversationId.uuidString,

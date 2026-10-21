@@ -617,6 +617,11 @@ final class ModelConfigurationStore: ObservableObject {
     /// A provider can be used for cross-provider failover if it needs no key
     /// (Ollama) or a non-empty key is available.
     func isProviderEligible(_ provider: ModelProvider) -> Bool {
+        // A refused pair (legacy Z.AI Coding Plan scope or a Coding Plan host)
+        // never takes part in failover, warmup, selection or background probes.
+        guard ProviderEndpointPolicy.isUsable(provider: provider, baseURL: baseURLForProvider(provider)) else {
+            return false
+        }
         if !provider.requiresAPIKey { return true }
         return !resolvedAPIKey(for: provider).isEmpty
     }
@@ -1398,6 +1403,11 @@ final class ModelConfigurationStore: ObservableObject {
         !resolvedAPIKey.isEmpty
     }
 
+    /// Why TriOS refuses the selected provider and base URL, or nil.
+    var usageBlockReason: String? {
+        ProviderEndpointPolicy.usageBlockReason(provider: selectedProvider, baseURL: baseURL)
+    }
+
     var credentialStatus: String {
         if ModelCredentialStore.read(for: selectedProvider) != nil {
             return "Stored in macOS Keychain"
@@ -1795,6 +1805,8 @@ final class ModelConfigurationStore: ObservableObject {
         case .anthropic: return "TRIOS_ANTHROPIC_API_KEY"
         case .openrouter: return "TRIOS_OPENROUTER_API_KEY"
         case .zai: return "TRIOS_ZAI_API_KEY"
+        case .zaiStandard: return "TRIOS_ZAI_STANDARD_API_KEY"
+        case .nvidia: return "TRIOS_NVIDIA_API_KEY"
         case .ollama: return "TRIOS_OLLAMA_API_KEY"
         }
     }

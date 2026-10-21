@@ -87,6 +87,10 @@ actor ModelCostService: Sendable {
     private func normalize(model: String, provider: ModelProvider) -> String {
         let lowercased = model.lowercased()
         switch provider {
+        case .zaiStandard:
+            // Same Z.AI models as the legacy bucket; the Keychain scope differs,
+            // the model-cost identity does not.
+            return "\(ModelProvider.zai.rawValue)/\(lowercased)"
         case .openrouter:
             // Strip the provider namespace for common slugs we catalog.
             let suffix = lowercased.split(separator: "/").last.map(String.init) ?? lowercased

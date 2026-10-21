@@ -26,6 +26,17 @@ actor ModelContextService: Sendable {
         let claudeProfile = ModelContextProfile(maxContextTokens: 200_000, maxOutputTokens: 8_192)
         let glm128kProfile = ModelContextProfile(maxContextTokens: 128_000, maxOutputTokens: 4_096)
         let glm32kProfile = ModelContextProfile(maxContextTokens: 32_000, maxOutputTokens: 4_096)
+        let zaiProfiles: [String: ModelContextProfile] = [
+            // Conservative: same window as glm-5.1 until the learned
+            // per-endpoint limits observe the real ceiling.
+            "glm-5.2": glm128kProfile,
+            "glm-5.1": glm128kProfile,
+            "glm-5-turbo": glm128kProfile,
+            "glm-5": glm32kProfile,
+            "glm-4.7": glm128kProfile,
+            "glm-4.7-flash": glm128kProfile,
+            "glm-4.6": glm128kProfile
+        ]
 
         self.knownProfiles = [
             .openai: [
@@ -38,17 +49,8 @@ actor ModelContextService: Sendable {
                 "claude-opus-4-5": claudeProfile,
                 "claude-haiku-4-5": claudeProfile
             ],
-            .zai: [
-                // Conservative: same window as glm-5.1 until the learned
-                // per-endpoint limits observe the real ceiling.
-                "glm-5.2": glm128kProfile,
-                "glm-5.1": glm128kProfile,
-                "glm-5-turbo": glm128kProfile,
-                "glm-5": glm32kProfile,
-                "glm-4.7": glm128kProfile,
-                "glm-4.7-flash": glm128kProfile,
-                "glm-4.6": glm128kProfile
-            ]
+            .zai: zaiProfiles,
+            .zaiStandard: zaiProfiles
         ]
 
         self.commonSlugs = [
@@ -93,7 +95,7 @@ actor ModelContextService: Sendable {
     /// Nonisolated because it only reads immutable `let` catalog state.
     nonisolated func advertisedProfile(for model: String, provider: ModelProvider) -> ModelContextProfile {
         switch provider {
-        case .openai, .anthropic, .zai:
+        case .openai, .anthropic, .zai, .zaiStandard:
             return knownProfiles[provider]?[model] ?? ModelContextProfile(
                 maxContextTokens: 4_096,
                 maxOutputTokens: 1_024
@@ -103,6 +105,10 @@ actor ModelContextService: Sendable {
                 maxContextTokens: 128_000,
                 maxOutputTokens: 4_096
             )
+        case .nvidia:
+            // Hosted catalog windows differ per model and are not published in
+            // the catalog response; start conservative and let the learner raise it.
+            return ModelContextProfile(maxContextTokens: 32_768, maxOutputTokens: 4_096)
         case .openrouter:
             let stripped = model.split(separator: "/").dropFirst().joined(separator: "/")
             return commonSlugs[stripped] ?? ModelContextProfile(

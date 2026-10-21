@@ -33,6 +33,11 @@ enum ModelCatalogParser {
             identifiers = models.compactMap { $0["id"] as? String }
         }
 
+        if provider == .nvidia {
+            // The hosted catalog mixes chat models with embedding, safety,
+            // reward and parsing models that the chat endpoint cannot serve.
+            return ProviderEndpointPolicy.chatModels(from: identifiers)
+        }
         return Array(Set(identifiers.filter { !$0.isEmpty })).sorted()
     }
 }
@@ -43,7 +48,7 @@ actor ModelCatalogService {
         baseURL: String,
         apiKey: String?
     ) async throws -> [String] {
-        if provider == .zai {
+        if provider == .zai || provider == .zaiStandard {
             return provider.suggestedModels
         }
 
