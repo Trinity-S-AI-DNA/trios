@@ -15,7 +15,7 @@
   - M1: structured symbolic grammar model G$\varphi$ with hypothesis class S(C).
 
   Both models are evaluated on the frozen target dataset T = {Xi}i=1N. The MDL
-  framework (Barron, Rissanen \& Yu, 1998; Grünwald, 2007) provides the primary
+  framework \citep{barron1998,grunwald2007} provides the primary
   decision criterion; Bayesian evidence provides a complementary and asymptotically
   equivalent measure.
 
@@ -39,14 +39,14 @@
 
   B := (P(T mid M1))/(P(T mid M0)). 20
 
-  Standard calibration of log10 B (Grünwald, 2007):
+  Standard calibration of log10 B \citep{grunwald2007}:
 
   Crucially, B as defined in (20) does not penalize for the size of S(C). The MDL
   framework (Section 7.4) introduces the necessary penalization, without which the
   Bayes factor provides a misleadingly optimistic assessment.
 
   7.4 Minimum Description Length Framework
-  Following Barron, Rissanen \& Yu (1998) and Grünwald (2007), the total description
+  Following Barron, Rissanen \& Yu \citep{barron1998} and Grünwald \citep{grunwald2007}, the total description
   length of model M applied to data T is
 
   MDL(M) = L(M) + L(T mid M), 21
@@ -55,7 +55,7 @@
   conditional encoding cost of the data given the model (fit cost).
 
   Model complexity term. For M1, the model description must specify: the basis A, the
-  complexity bound C, and the selected expression F^*(theta). The code length is
+  complexity bound C, and the selected expression F\textasciicircum{}*(theta). The code length is
 
   L(M1) approx log2 |S(C)| + log2 C. 22
 
@@ -85,19 +85,14 @@
 
   7.6 Information-Geometric Interpretation
   From an information-geometry perspective, the symbolic grammar induces a
-  non-Euclidean statistical manifold over R^+, with geodesic distances governed by the
+  non-Euclidean statistical manifold over R\textasciicircum{}+, with geodesic distances governed by the
   logarithmic embedding and the discrete lattice anisotropy of S(C). The observed
   compression advantage has the heuristic interpretation
 
   KG$\varphi$(X) $\leq$ Kunstructured(X) - DeltaMDL 26
 
   for well-approximated constants X, where K denotes Kolmogorov complexity in the
-  sense of Chaitin (1987). The MDL quantity DeltaMDL provides a computable lower
+  sense of Chaitin \citep{chaitin1987}. The MDL quantity DeltaMDL provides a computable lower
   bound on the potential compression improvement; the inequality (26) is heuristic and
   not a theorem.
 
-\subsection{References}
-
-- Vasilev, D. \textit{Flos Aureus Monograph: Trinity Constants}. DOI \href{https://zenodo.org/doi/10.5281/zenodo.19227877}{10.5281/zenodo.19227877}.
-- Pellis, S. "The Fine-Structure Constant and the Golden Ratio." \href{https://vixra.org/pdf/2110.0117v4.pdf}{viXra 2110.0117 v4}.
-- Sherbon, M. A. "Fundamental Nature of the Fine-Structure Constant." \href{https://hal.science/hal-02341850/document}{HAL hal-02341850}.

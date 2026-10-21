@@ -39,7 +39,7 @@
 
   - Kolmogorov analogy. The number of bits required to specify an integer exponent tuple
   scales as log2 |theta|1 per entry, making the ell1 norm a conservative linear proxy for
-  code length (Barron, Rissanen \& Yu, 1998; Chaitin, 1987).
+  code length \citep{barron1998,chaitin1987}.
   - Algebraic naturality. Expressions with small ell1 norm require the fewest
   multiplicative factors and are algebraically minimal in a precise sense.
   - Tractability. The induced hypothesis class HC has finite, analytically bounded
@@ -48,7 +48,7 @@
   Sensitivity to this metric choice is discussed in Section 13.
 
   3.3 Logarithmic Embedding Structure
-  Under the logarithmic map log : R^+ $\rightarrow$ R, expression (1) becomes
+  Under the logarithmic map log : R\textasciicircum{}+ $\rightarrow$ R, expression (1) becomes
 
   log F(theta) = log n + k log 3 + p log $\varphi$ + m log pi + q log e. 3
 
@@ -86,7 +86,7 @@
   formula.
 
   3.5 Representation Bias and the Induced Grammar Prior
-  The grammar G$\varphi$ induces a non-uniform prior measure over R^+. The empirical
+  The grammar G$\varphi$ induces a non-uniform prior measure over R\textasciicircum{}+. The empirical
   counting measure
 
   PG$\varphi$(x) propto sumtheta $\in$ S(C) delta(x - F(theta)), 6
@@ -96,22 +96,17 @@
   Psigma(x) = sumtheta $\in$ S(C) exp(-|x - F(theta)|/sigma). 7
 
   This distribution is concentrated near dense algebraic combinations of the basis
-  elements and is generically non-uniform over R^+. The non-uniformity of Psigma must
+  elements and is generically non-uniform over R\textasciicircum{}+. The non-uniformity of Psigma must
   be explicitly accounted for in all null-model constructions (Section 5). Failure to
   account for this non-uniformity would systematically inflate apparent compressibility.
 
   3.6 Approximation Quality Functional
-  Given a target constant X $\in$ R^+, the approximation quality at complexity C is
+  Given a target constant X $\in$ R\textasciicircum{}+, the approximation quality at complexity C is
   measured by the minimum normalized absolute deviation:
 
   dC(X) := mintheta $\in$ S(C) (|F(theta) - X|)/(|X|). 8
 
   The function C ↦ dC(X) is monotonically non-increasing in C and converges to zero for
-  sufficiently large C whenever X $\in$ R^+. The statistical question concerns the rate of
+  sufficiently large C whenever X $\in$ R\textasciicircum{}+. The statistical question concerns the rate of
   this convergence relative to null expectations under properly specified baseline models.
 
-\subsection{References}
-
-- Vasilev, D. \textit{Flos Aureus Monograph: Trinity Constants}. DOI \href{https://zenodo.org/doi/10.5281/zenodo.19227877}{10.5281/zenodo.19227877}.
-- Pellis, S. "The Fine-Structure Constant and the Golden Ratio." \href{https://vixra.org/pdf/2110.0117v4.pdf}{viXra 2110.0117 v4}.
-- Sherbon, M. A. "Fundamental Nature of the Fine-Structure Constant." \href{https://hal.science/hal-02341850/document}{HAL hal-02341850}.

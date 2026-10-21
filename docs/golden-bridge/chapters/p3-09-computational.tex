@@ -29,13 +29,13 @@
 
   Algorithm 9.2 (Trinity lattice search to complexity L).
   Input: target x, complexity budget L.
-  Output: optimal label lambda^, approximant T^, residual R.
+  Output: optimal label lambda\textasciicircum{}, approximant T\textasciicircum{}, residual R.
   Implementation: enumerate labels (n,k,p,m,q) with ell(lambda) $\leq$ L via nested loops;
   apply logarithmic pruning to reduce search from O(2L) to O(2L/2) using the identity log
   T = log n + k log 3 + p log$\varphi$ + mlogpi + q and nearest-neighbour search in log-space.
 
   Algorithm 9.3 (MDL score computation).
-  Input: label lambda^*, residual coefficient sequence c res.
+  Input: label lambda\textasciicircum{}*, residual coefficient sequence c res.
   Output: MDL score per Definition 7.1.
   Implementation: direct application of the bit-complexity formulas of Sections 2.6 and
   7.1.
@@ -44,7 +44,7 @@
   Input: target x, maximum complexity budget Lmax.
   Output: estimated muT(x) with standard error.
   Implementation: for each L = 5, …, Lmax, compute PiL(x) and |RL(x)|. Perform linear
-  regression of log|RL| against ell(lambda^*L); the slope times -1/log$\varphi$-1 is muT.
+  regression of log|RL| against ell(lambda\textasciicircum{}*L); the slope times -1/log$\varphi$-1 is muT.
 
   Algorithm 9.5 (Catalogue MDL vector computation).
   Input: 42 catalogue entries {(xi, lambdai)}.

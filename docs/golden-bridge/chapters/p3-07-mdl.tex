@@ -11,7 +11,7 @@
   The MDL principle evaluates a model by the total code length required to transmit both
   the model and the data given the model. In the GOLDEN BRIDGE (Trinity-Pellis Bridge) context:
 
-  - Model: Trinity monomial T^ = PiL(x), requiring ell(lambda^) bits (Definition 2.6);
+  - Model: Trinity monomial T\textasciicircum{} = PiL(x), requiring ell(lambda\textasciicircum{}) bits (Definition 2.6);
   - Data given model: Pellis residual c res of depth D, requiring approximately D $\cdot$ H(c res)
   bits, where H is the empirical entropy of the coefficient sequence.
 
@@ -22,7 +22,7 @@
 
         Definition 7.1 (MDL score).
 
-  MDL(T^, c res) = ell(lambda^) + sumk=0D ell(ck res),
+  MDL(T\textasciicircum{}, c res) = ell(lambda\textasciicircum{}) + sumk=0D ell(ck res),
 
   where ell(c) = lceil log2(|c|+1) rceil + 1 for each coefficient (one bit for the sign).
 
@@ -31,8 +31,8 @@
         the representation (PiL(x), RL(x)) minimises the MDL score (Definition 7.1) up to
         an additive constant of O(log log(1/$\varepsilon$)).
 
-  Proof sketch. Among all T $\in$ T with ell(lambdaT) $\leq$ L, the choice T^* = PiL(x) minimises
-  |r| = |x - T|. A smaller residual |r| yields shorter Pellis coefficient sequences (since RD $\leq
+  Proof sketch. Among all T $\in$ T with ell(lambdaT) $\leq$ L, the choice T\textasciicircum{}* = PiL(x) minimises
+  |r| = |x - T|. A smaller residual |r| yields shorter Pellis coefficient sequences (since RD $\leq$
   $\varphi$-(D+1) and the coefficients are bounded by the residual magnitude), hence a lower
   MDL score. The O(loglog(1/$\varepsilon$)) additive error arises from the integer rounding in
   coefficient coding. □
@@ -41,7 +41,7 @@
   The relation between MDL scores and Kolmogorov/algorithmic complexity was
   established by Chaitin (1987). In the GOLDEN BRIDGE (Trinity-Pellis Bridge) setting:
 
-  K(x|$\varepsilon$) $\leq$ MDL(T^*, c res) + O(log K(x|$\varepsilon$)),
+  K(x|$\varepsilon$) $\leq$ MDL(T\textasciicircum{}*, c res) + O(log K(x|$\varepsilon$)),
 
   where K(x|$\varepsilon$) is the Kolmogorov complexity of x given precision $\varepsilon$. Constants with
   anomalously low MDL scores relative to their Kolmogorov complexity --- i.e., those that

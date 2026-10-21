@@ -11,7 +11,7 @@
   Attempts to express dimensionless physical constants in closed algebraic form have a
   long and largely undisciplined history. Early efforts concentrated on alpha-1 approx
   137, with various proposals involving integers and simple arithmetic --- all post-hoc and
-  statistically uncontrolled (PDG 2024 review articles). The combinatorial proliferation of
+  statistically uncontrolled \citep{pdg2024}. The combinatorial proliferation of
   candidate expressions at increasing complexity was universally ignored, making
   significance claims meaningless.
 
@@ -28,11 +28,10 @@
   Symbolic regression --- the automated discovery of mathematical expressions fitting
   numerical data --- has been developed extensively in the machine learning community,
   with methods ranging from genetic programming to neural-guided search. The AI
-  Feynman algorithm of Udrescu and Tegmark (Science Advances, 2020) demonstrated
+  Feynman algorithm of Udrescu and Tegmark \citep{udrescu2020} demonstrated
   that physics-inspired techniques including dimensional analysis, separability detection,
   and brute-force enumeration can recover 100 equations from the Feynman Lectures on
-  Physics. More recent work in physics-informed symbolic regression (Angelis et al.,
-  Archives of Computational Methods in Engineering, 2023) has extended these methods
+  Physics. More recent work in physics-informed symbolic regression \citep{angelis2023} has extended these methods
   to broader scientific domains.
 
   The present work differs from all these approaches in a fundamental respect: the target
@@ -44,12 +43,12 @@
   hypothesis class.
 
   2.3 Minimum Description Length and Bayesian Model Comparison
-  The Minimum Description Length principle, originating in Rissanen's 1978 paper
-  Modeling by the shortest data description (Automatica, 1978) and systematized in
-  Barron, Rissanen \& Yu (1998), provides a rigorous basis for model comparison that
+  The Minimum Description Length principle, originating in Rissanen's 1978 paper \citep{rissanen1978}
+  Modeling by the shortest data description \citep{rissanen1978} and systematized in
+  Barron, Rissanen \& Yu \citep{barron1998}, provides a rigorous basis for model comparison that
   penalizes complexity in terms of code length. The core insight is that any regularity in
   data can be exploited to compress it, and the best model is the one achieving the
-  shortest description of data and model combined. Grünwald's comprehensive treatment
+  shortest description of data and model combined. Grünwald's comprehensive treatment \citep{grunwald2007}
   (MIT Press, 2007) formalizes the connections between crude two-part codes,
   normalized maximum likelihood, Bayesian marginal likelihoods, and prequential coding,
   establishing asymptotic equivalences between these approaches.
@@ -60,8 +59,7 @@
   deployed in Section 7 with explicit penalization for the size and structure of the
   symbolic hypothesis class.
 
-  The connection to Kolmogorov-Chaitin algorithmic complexity (Chaitin, Cambridge
-  University Press, 1987) is conceptual: the MDL compression score DeltaMDL provides a
+  The connection to Kolmogorov-Chaitin algorithmic complexity \citep{chaitin1987} is conceptual: the MDL compression score DeltaMDL provides a
   computable, statistical lower bound on the potential reduction in Kolmogorov
   complexity achievable by the structured grammar.
 
@@ -131,8 +129,3 @@
   This tier system is deliberately reviewer-facing. If a sentence can be read in more than
   one tier, the lower evidentiary tier controls the interpretation.
 
-\subsection{References}
-
-- Vasilev, D. \textit{Flos Aureus Monograph: Trinity Constants}. DOI \href{https://zenodo.org/doi/10.5281/zenodo.19227877}{10.5281/zenodo.19227877}.
-- Pellis, S. "The Fine-Structure Constant and the Golden Ratio." \href{https://vixra.org/pdf/2110.0117v4.pdf}{viXra 2110.0117 v4}.
-- Sherbon, M. A. "Fundamental Nature of the Fine-Structure Constant." \href{https://hal.science/hal-02341850/document}{HAL hal-02341850}.

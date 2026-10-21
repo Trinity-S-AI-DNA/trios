@@ -88,7 +88,7 @@ The theoretical MDL framework is grounded in the Solomonoff universal prior, whi
 
 \subsubsection{4.1 What the Anchor Byte Does and Does Not Establish}
 
-The reset state \_\_M26\_\_\texttt{uio\\_out}\_\_M27\_\_ \texttt{uo\\_out}\} = \texttt{0x47C0}\_\_M28\_\_18368\_\_M29\_\_\phi^2 + \phi^{-2} = 3$ constitutes the "anchor byte witness." The chip does what it does because the RTL was written that way; the silicon does not independently \textit{confirm} the mathematical identity.
+The reset state \_\_M26\_\_\texttt{uio\_out}\_\_M27\_\_ \texttt{uo\_out}\} = \texttt{0x47C0}\_\_M28\_\_18368\_\_M29\_\_$\phi^2 + \phi^{-2} = 3$ constitutes the "anchor byte witness." The chip does what it does because the RTL was written that way; the silicon does not independently \textit{confirm} the mathematical identity.
 
 This distinction matters. The word "proof" should not appear in any description of this result. "Provenance evidence" is the accurate characterization: the anchor byte is evidence that the identity $\phi^2 + \phi^{-2} = 3$ was embedded in the design before fabrication, not that $\phi^2 + \phi^{-2} = 3$ holds for a reason other than simple algebra.
 
@@ -159,7 +159,7 @@ The $G_\phi$ grammar is claimed to yield a parsimonious description of the fine-
 A systematic audit would proceed as follows: assign $N$ pseudo-randomly generated 16-bit constants to hypothetical silicon designs, and attempt to construct narratives connecting each constant to $\phi^2 + \phi^{-2} = 3$ or related identities. If a substantial fraction (e.g., more than $10\%$) of randomly chosen constants can be assigned comparable narrative significance, the anchor byte argument is weakened to the point of evidential irrelevance. If the fraction is low (e.g., fewer than $1\%$), the pre-registered anchor byte retains evidential weight.
 
 \textbf{Condition 4: Independent replication of the RTL fails to reproduce the anchor witness.}
-The RTL for the Three Crowns is publicly available. An independent silicon-design team, working from the open RTL without access to the authors' design notes, should be able to verify that the reset state $\{$\texttt{uio\_out}$,$ \texttt{uo\_out}\} = \texttt{0x47C0}$ is a necessary consequence of the RTL as written. If an independent team, following the RTL faithfully, obtains a different reset state, or if the RTL is found to contain errors that were corrected post-hoc, the silicon provenance claim is falsified. This test is executable now, with publicly available tools, and the framework invites it.
+The RTL for the Three Crowns is publicly available. An independent silicon-design team, working from the open RTL without access to the authors' design notes, should be able to verify that the reset state $\{$\texttt{uio\_out}$,$ \texttt{uo\_out}\} = \texttt{0x47C0}$ is a necessary consequence of the RTL as written. If an independent team, following the RTL faithfully, obtains a different reset state, or if the RTL is found to contain errors that were corrected post-hoc, the silicon provenance claim is falsified. This test is executable now, with publicly available tools, and the framework invites it.$
 
 \noindent\rule{\textwidth}{0.4pt}
 
