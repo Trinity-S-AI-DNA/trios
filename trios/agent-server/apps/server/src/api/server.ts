@@ -65,6 +65,7 @@ import { createQueenPublicAppRoute } from './routes/queen-public-app'
 import { createQueenPublicCreditsRoute } from './routes/queen-public-credits'
 import { createQueenPublicEarningsRoute } from './routes/queen-public-earnings'
 import { createQueenPublicEventsRoute } from './routes/queen-public-events'
+import { createQueenPublicFeedRoute } from './routes/queen-public-feed'
 import { createQueenPublicHardwareRoute } from './routes/queen-public-hardware'
 import { createQueenPublicJobsRoute } from './routes/queen-public-jobs'
 import { createQueenPublicLeaderboardRoute } from './routes/queen-public-leaderboard'
@@ -440,6 +441,7 @@ export async function createHttpServer(config: HttpServerConfig) {
     .use('/queen/public-tasks', publicReadCorsMiddleware())
     .use('/queen/public-events', publicReadCorsMiddleware())
     .use('/queen/public-actors', publicReadCorsMiddleware())
+    .use('/queen/public-feed', publicReadCorsMiddleware())
     .use('/queen/public-task', publicReadCorsMiddleware())
     .use('/queen/public-earnings', publicReadCorsMiddleware())
     .use('/queen/scheduler', publicReadCorsMiddleware())
@@ -485,6 +487,7 @@ export async function createHttpServer(config: HttpServerConfig) {
     // pids, kinds, counts, mailbox depths, times and task references, never a
     // message or a card's arguments. Empty with TRIOS_QUEEN_ACTOR_EVENTS off.
     .route('/queen/public-actors', createQueenPublicActorsRoute())
+    .route('/queen/public-feed', createQueenPublicFeedRoute())
     .route('/queen/public-task', createQueenPublicTaskRoute())
     // GitHub delivers the app's webhooks here, from its own server: there is
     // no Origin to trust. The guard is the HMAC of the body under

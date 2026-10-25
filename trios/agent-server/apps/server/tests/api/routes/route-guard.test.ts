@@ -161,10 +161,16 @@ describe('route-guard audit over src/api/server.ts', () => {
     // recomputed from the merged server.ts, not copied from either side. The
     // same 63, 18, 20 and 17: queen's guard on /queen/actors (trios#1735) was
     // already here, cherry-picked, and queen adds no other mount.
-    expect(report.totalMounts).toBe(63)
+    // RE-MEASURED 2026-10-25, the t27f live feed (t27#12146): 63 became 64
+    // with /queen/public-feed, an explicit publicReadCorsMiddleware() on the
+    // same projection /queen/public-actors serves, re-shaped for the t27f
+    // live page (format t27f-queen-feed-v1): kind, tick and the task/spec
+    // labels only, never a message or a card's arguments. Public-read went
+    // 17 to 18; no other count moved.
+    expect(report.totalMounts).toBe(64)
     expect(report.prefixGuardCount).toBe(18)
     expect(report.guardedSubAppCount).toBe(20)
-    expect(report.publicReadCount).toBe(17)
+    expect(report.publicReadCount).toBe(18)
   })
 
   it('reports zero unguarded mounts once the reasoned allowlist is applied', () => {
@@ -249,7 +255,10 @@ describe('route-guard audit over src/api/server.ts', () => {
     // RE-MEASURED 2026-10-10, the actors on the bus: thirty-nine became forty.
     // The seventeenth public-read is /queen/public-actors.
     // RE-MEASURED 2026-10-10, queen merged in: still forty, recomputed.
-    expect(queenMounts.length).toBe(40)
+    // RE-MEASURED 2026-10-25, the t27f live feed: forty became forty-one. The
+    // eighteenth public-read is /queen/public-feed (t27#12146); the second
+    // mount is its explicit publicReadCorsMiddleware() line.
+    expect(queenMounts.length).toBe(41)
 
     const counts: Record<string, number> = {
       'public-read': 0,
@@ -263,7 +272,7 @@ describe('route-guard audit over src/api/server.ts', () => {
     // The four buckets must account for every mount with the exact expected
     // split; anything unaccounted for breaks one of these numbers.
     expect(counts).toEqual({
-      'public-read': 17,
+      'public-read': 18,
       'prefix-guard': 0,
       wrapper: 13,
       unguarded: 10,
