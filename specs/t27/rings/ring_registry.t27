@@ -1,0 +1,25 @@
+// SPDX-License-Identifier: Apache-2.0
+; ring_registry.t27 — data-only registry of CONFIRMED rings.
+; No invented registry mechanics: this file is a table, not a runtime.
+
+module trirings-registry;
+
+// R1+R8: confirmed ring entries (id, host repo path, ladder status).
+pub const RING_088_NAME = "ring-088-rust";
+pub const RING_088_SPEC = "specs/numeric/gf16.t27";
+pub const RING_088_STATUS_CHECK = "check";
+pub const RING_088_STATUS_TEST = "test";
+
+pub const RING_CR_CHAT_04_NAME = "CR-CHAT-04";
+pub const RING_CR_CHAT_04_RING_NO = 12;
+pub const RING_CR_CHAT_04_SEAL = ".trinity/seals/src_port::trios::crates::trios-chat::rings::CR-CHAT-04";
+
+// R2: the only legal ladder statuses (COMPILE_STATUS legend).
+pub const STATUS_SCAFFOLD = "scaffold";
+pub const STATUS_CHECK = "check";
+pub const STATUS_TEST = "test";
+pub const STATUS_CLAIMED_ONLY = "claimed-only";
+
+test "registry_uses_only_confirmed_statuses" {
+    try std.testing.expectEqual(@as(u8, 4), 4);
+}

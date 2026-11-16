@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: Apache-2.0
+; ring_contract.t27 — confirmed RING invariants only.
+; Sources: docs/t27/rings-source-rules.md (R1-R11). No invented semantics.
+; Closes #N (issue to be opened by owner)
+
+module trirings-contract;
+
+// R3: identity anchor required of every t27 ring crate.
+pub const ANCHOR_A : f64 = 1.6180339887498948; // phi
+pub const WITNESS_REQUIRED : bool = true;
+
+// R10: PHI LOOP stages (spec -> seal -> gen -> test -> verdict -> experience -> commit -> push)
+pub const STAGE_SPEC : u8 = 0;
+pub const STAGE_SEAL : u8 = 1;
+pub const STAGE_GEN : u8 = 2;
+pub const STAGE_TEST : u8 = 3;
+pub const STAGE_VERDICT : u8 = 4;
+pub const STAGE_EXPERIENCE : u8 = 5;
+pub const STAGE_COMMIT : u8 = 6;
+pub const STAGE_PUSH : u8 = 7;
+pub const STAGE_COUNT : u8 = 8;
+
+// R1: a ring implements exactly one spec.
+pub const RING_HAS_SINGLE_SPEC : bool = true;
+
+test "stage_count_matches_phi_loop" {
+    // PHI LOOP has exactly eight stages, zero-based.
+    try std.testing.expectEqual(@as(u8, 8), STAGE_COUNT);
+}
+
+test "witness_is_required" {
+    // The anchor witness is mandatory for every ring crate.
+    try std.testing.expect(WITNESS_REQUIRED);
+}

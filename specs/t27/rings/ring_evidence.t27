@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: Apache-2.0
+; ring_evidence.t27 — seal schema fields (R7), exactly as observed in the
+; CR-CHAT-04 seal manifest. No extra evidence formats invented.
+
+module trirings-evidence;
+
+pub const SEAL_SCHEMA : u8 = 2;
+pub const SEAL_HAS_SPEC_HASH : bool = true;
+pub const SEAL_GEN_TARGETS = "c,rust,verilog,zig";
+pub const SEAL_GEN_TARGET_COUNT : u8 = 4;
+pub const SEAL_TEST_TARGET = "zig";
+pub const SEAL_BUILT_BY = "t27c-bootstrap";
+
+test "seal_covers_four_gen_targets" {
+    try std.testing.expectEqual(@as(u8, 4), SEAL_GEN_TARGET_COUNT);
+}
+
+test "seal_schema_observed" {
+    try std.testing.expectEqual(@as(u8, 2), SEAL_SCHEMA);
+}

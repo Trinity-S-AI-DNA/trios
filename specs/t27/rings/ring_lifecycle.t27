@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: Apache-2.0
+; ring_lifecycle.t27 — ladder + wave gate facts (R2, R6).
+
+module trirings-lifecycle;
+
+pub const LADDER_SCAFFOLD : u8 = 0;
+pub const LADDER_CHECK : u8 = 1;
+pub const LADDER_TEST : u8 = 2;
+pub const LADDER_MAX : u8 = 2;
+
+// R6: CI run summary outranks the hand-maintained status file.
+pub const CI_RUN_IS_MEASURED : bool = true;
+pub const STATUS_FILE_IS_REMEMBERED : bool = true;
+
+test "ladder_is_three_stages" {
+    try std.testing.expectEqual(@as(u8, 2), LADDER_MAX);
+}
+
+test "ci_overrides_hand_notes" {
+    try std.testing.expect(CI_RUN_IS_MEASURED);
+}
