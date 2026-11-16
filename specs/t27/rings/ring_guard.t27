@@ -1,0 +1,22 @@
+// SPDX-License-Identifier: Apache-2.0
+; ring_guard.t27 — commit/PR rules (R9, R11). Data consts only:
+; string validation mechanics are NOT_FOUND_IN_SOURCE.
+
+module trirings-guard;
+
+// R9: commit subject format ring-NNN-type: desc (Closes #N)
+pub const COMMIT_PREFIX = "ring-";
+pub const COMMIT_REQUIRES_ISSUE : bool = true;
+
+// R11: tests before merge; new code requires new tests; PR closes an issue.
+pub const TESTS_BEFORE_MERGE : bool = true;
+pub const NEW_CODE_REQUIRES_NEW_TESTS : bool = true;
+pub const PR_MUST_CLOSE_ISSUE : bool = true;
+
+test "commit_requires_closing_issue" {
+    try std.testing.expect(COMMIT_REQUIRES_ISSUE);
+}
+
+test "pr_must_close_issue" {
+    try std.testing.expect(PR_MUST_CLOSE_ISSUE);
+}
